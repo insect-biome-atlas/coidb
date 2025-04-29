@@ -135,3 +135,6 @@ dmypy.json
 slurm-*
 bold_*
 *.zip
+# pixi environments
+.pixi
+*.egg-info
