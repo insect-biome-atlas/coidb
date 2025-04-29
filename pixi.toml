@@ -1,0 +1,23 @@
+[project]
+authors = ["John Sundh <john.sundh@scilifelab.se>"]
+channels = ["conda-forge", "bioconda"]
+description = "A tool to generate a database of COI-5P sequences"
+name = "coidb"
+platforms = ["osx-arm64", "osx-64", "linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+snakemake = ">=9"
+python = "*"
+biopython = "*"
+vsearch = "*"
+tqdm = "*"
+pandas = "*"
+polars = "*"
+seqkit = "*"
+jupyter = "*"
+#unzip = "*"
+#hmmer = "*"
+#clustalo = "*"
