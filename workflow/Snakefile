@@ -32,44 +32,15 @@ rule filter:
         tsv=get_extracted
     output:
         tsv="_processed/01-data.filtered.tsv"
+    log:
+        "_logs/filter.log"
     params:
+        src=workflow.source_path("scripts/filter.py"),
         min_len=config["min_len"]
-    run:
-        letters = set(list(string.ascii_uppercase) + ["-"])
-        DNA = set(["A","C","T","G"])
-        non_DNA = list(letters.difference(DNA))
-        tsv = pl.scan_csv(input.tsv[0], has_header=True, separator="\t", schema_overrides={"nuc_basecount": int}, ignore_errors=True)
-        (
-            tsv.
-            # select columns
-            select(
-                ["processid","bin_uri","kingdom","phylum","class","order","family","genus","species","nuc","nuc_basecount","marker_code"]
-            ).
-            # filter by gene type
-            filter(
-                (pl.col("marker_code") == "COI-5P") & (pl.col("bin_uri").str.contains("BOLD:[A-Z0-9]+")) & (pl.col("nuc_basecount") >= params.min_len)
-            ).
-            # translate seq to uppercase
-            with_columns(
-                seq=pl.col("nuc").str.to_uppercase()
-            ).
-            # remove left gap characters
-            with_columns(
-                seq=pl.col("seq").str.replace(r"^-+", "")
-            ).
-            # remove right gap characters
-            with_columns(
-                seq=pl.col("seq").str.replace(r"$-+", "")
-            ).
-            # remove remaining seqs with non DNA characters
-            filter(
-                ~pl.col("seq").str.contains_any(non_DNA)
-            ).
-            # select and order columns
-            select(
-                ["processid","kingdom","phylum","class","order","family","genus","species","bin_uri","seq"]
-            )
-        ).sink_csv(output.tsv, separator="\t")
+    shell:
+        """
+        python {params.src} -i {input.tsv} -o {output.tsv} -l {params.min_len} 2>{log}
+        """
 
 rule fill_missing:
     message: "Filling missing ranks"
