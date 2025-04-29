@@ -1,0 +1,141 @@
+# Validate config
+
+from snakemake.utils import validate
+validate(config, "schemas/config.schema.yaml")
+
+import polars as pl
+import string
+
+checkpoint extract_input:
+    input:
+        tarball=config["input_file"],
+    output:
+        directory("_extract")
+    log:
+        "_logs/extract_input.log"
+    shell:
+        """
+        tar -C {output} -xvf {input.tarball} > {log} 2>&1
+        """
+
+def get_extracted(wildcards):
+    checkpoint_output = checkpoints.extract_input.get(**wildcards).output[0]
+    tsv = expand(
+        "_extract/{f}.tsv",
+        f=glob_wildcards(os.path.join(checkpoint_output, "{f}.tsv")).f
+    )
+    return tsv
+
+rule filter:
+    message: "Filter data to only include BOLD BIN records, trim and remove spurious sequences"
+    input:
+        tsv=get_extracted
+    output:
+        tsv="_processed/01-data.filtered.tsv"
+    params:
+        min_len=config["min_len"]
+    run:
+        letters = set(list(string.ascii_uppercase) + ["-"])
+        DNA = set(["A","C","T","G"])
+        non_DNA = list(letters.difference(DNA))
+        tsv = pl.scan_csv(input.tsv[0], has_header=True, separator="\t", schema_overrides={"nuc_basecount": int}, ignore_errors=True)
+        (
+            tsv.
+            # select columns
+            select(
+                ["processid","bin_uri","kingdom","phylum","class","order","family","genus","species","nuc","nuc_basecount","marker_code"]
+            ).
+            # filter by gene type
+            filter(
+                (pl.col("marker_code") == "COI-5P") & (pl.col("bin_uri").str.contains("BOLD:[A-Z0-9]+")) & (pl.col("nuc_basecount") >= params.min_len)
+            ).
+            # translate seq to uppercase
+            with_columns(
+                seq=pl.col("nuc").str.to_uppercase()
+            ).
+            # remove left gap characters
+            with_columns(
+                seq=pl.col("seq").str.replace(r"^-+", "")
+            ).
+            # remove right gap characters
+            with_columns(
+                seq=pl.col("seq").str.replace(r"$-+", "")
+            ).
+            # remove remaining seqs with non DNA characters
+            filter(
+                ~pl.col("seq").str.contains_any(non_DNA)
+            ).
+            # select and order columns
+            select(
+                ["processid","kingdom","phylum","class","order","family","genus","species","bin_uri","seq"]
+            )
+        ).sink_csv(output.tsv, separator="\t")
+
+rule fill_missing:
+    message: "Filling missing ranks"
+    input:
+        tsv=rules.filter.output.tsv
+    output:
+        tsv="_processed/02-data.fill_missing.tsv"
+    run:
+        import time
+        start = time.time()
+        tsv = pl.scan_csv(input.tsv, has_header=True, separator="\t", null_values=["None"])
+        (
+            tsv.with_columns(
+            # if kingdom is null, set to "unassigned"
+                pl.when(pl.col("kingdom").is_null()).then(pl.col("kingdom").fill_null("unassigned")).otherwise(pl.col("kingdom")).alias("kingdom")
+            ).with_columns(
+                # if phylum is null, set to kingdom + "_X"
+                pl.when(pl.col("phylum").is_null()).then(pl.col("kingdom")+"_X").otherwise(pl.col("phylum")).alias("phylum")
+            ).with_columns(
+                # if class is null, and phylum does not end in "_X", set to ph_fixed + "_X"
+                pl.when((pl.col("class").is_null()) & (~pl.col("phylum").str.contains(r"_X+$"))).then(pl.col("phylum")+"_X").otherwise(pl.col("class")).alias("class")
+            ).with_columns(
+                # if class is null, and phylum ends in "_X", set to phylum + "X"
+                pl.when((pl.col("class").is_null()) & (pl.col("phylum").str.contains(r"_X+$"))).then(pl.col("phylum")+"X").otherwise(pl.col("class")).alias("class")
+            ).with_columns(
+                # if order is null and class does not end in "_X", add "_X"
+                pl.when((pl.col("order").is_null()) & (~pl.col("class").str.contains(r"_X+$"))).then(pl.col("class")+"_X").otherwise(pl.col("order")).alias("order")
+            ).with_columns(
+                # if order is null and class ends with "_X", add "X"
+                pl.when((pl.col("order").is_null()) & (pl.col("class").str.contains(r"_X+$"))).then(pl.col("class")+"X").otherwise(pl.col("order")).alias("order")
+            ).with_columns(
+                # if family is null and order does not end in "_X", add "_X"
+                pl.when((pl.col("family").is_null()) & (~pl.col("order").str.contains(r"_X+$"))).then(pl.col("order")+"_X").otherwise(pl.col("family")).alias("family")
+            ).with_columns(
+                # if family is null and order ends in "_X", add "X"
+                pl.when((pl.col("family").is_null()) & (pl.col("order").str.contains(r"_X+$"))).then(pl.col("order")+"X").otherwise(pl.col("family")).alias("family")
+            ).with_columns(
+                # if genus is null and family does not end in "_X", add "_X"
+                pl.when((pl.col("genus").is_null()) & (~pl.col("family").str.contains(r"_X+$"))).then(pl.col("family")+"_X").otherwise(pl.col("genus")).alias("genus")
+            ).with_columns(
+                # if genus is null and family ends in "_X", add "X"
+                pl.when((pl.col("genus").is_null()) & (pl.col("family").str.contains(r"_X+$"))).then(pl.col("family")+"X").otherwise(pl.col("genus")).alias("genus")
+            ).with_columns(
+                # if species is null and ge_fixed does not end in "_X", add "_X"
+                pl.when((pl.col("species").is_null()) & (~pl.col("genus").str.contains(r"_X+$"))).then(pl.col("genus")+"_X").otherwise(pl.col("species")).alias("species")
+            ).with_columns(
+                # if species is null and ge_fixed ends in "_X", add "X"
+                pl.when((pl.col("species").is_null()) & (pl.col("genus").str.contains(r"_X+$"))).then(pl.col("genus")+"X").otherwise(pl.col("species")).alias("species")
+            )
+        ).sink_csv(output.tsv, separator="\t")
+        runtime = time.time()-start
+        print(f"Filled missing ranks in {round(runtime)} seconds")
+
+rule calculate_consensus:
+    message: "Calculating consensus taxonomy for BINs"
+    input:
+        tsv=rules.fill_missing.output.tsv,
+    output:
+        tsv="_processed/03-data.consensus_taxonomy.tsv"
+    log:
+        "_logs/calculate_consensus.log"
+    params:
+        src=workflow.source_path("scripts/consensus_taxonomy.py"),
+        threshold=config["consensus_threshold"]
+    threads: workflow.cores
+    shell:
+        """
+        python {params.src} -i {input.tsv} -o {output.tsv} -p {threads} -t {params.threshold} 2>{log}
+        """
