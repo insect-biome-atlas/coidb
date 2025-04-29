@@ -1,5 +1,15 @@
 # COI DB
 
+## Retrieve data
+
+1. Go to the BOLD systems [data package page](https://bench.boldsystems.org/index.php/datapackages/Latest).
+
+Login is required to access files on this page, so either login or sign up. Click the **Data package (tar.gz compressed)** download button, wait for the download to finish, then 
+
+BOLD citation:
+
+Ratnasingham, Sujeevan, and Paul D N Hebert. “bold: The Barcode of Life Data System (http://www.barcodinglife.org).” Molecular ecology notes vol. 7,3 (2007): 355-364. doi:10.1111/j.1471-8286.2007.01678.x
+
 ## Overview
 This tool downloads sequences + metadata from [GBIF](https://hosted-datasets.gbif.org/)
 and formats sequences of interest for use with downstream metabarcoding analyses.
