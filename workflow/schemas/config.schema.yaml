@@ -1,0 +1,13 @@
+$schema: "https://json-schema.org/draft/2020-12/schema#"
+properties:
+  input_file:
+    type: string
+    description: "Input file for workflow"
+  min_len:
+    type: integer
+    default: 500
+    description: "Minimum length of sequences to include"
+  consensus_threshold:
+    type: integer
+    default: 80
+    description: "Consensus threshold in percent"
