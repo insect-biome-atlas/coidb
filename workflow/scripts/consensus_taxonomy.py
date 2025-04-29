@@ -83,7 +83,7 @@ def main(infile, outfile, threshold, cpus=1):
     # unique lineages per BIN. Then sort dataframe by number of records with
     # each lineage per BIN.
     bin_taxonomy = (
-        pl.scan_csv(infile, separator="\t", n_rows=100000)
+        pl.scan_csv(infile, separator="\t")
         .group_by(
             [
                 "kingdom",
