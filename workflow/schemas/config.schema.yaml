@@ -11,3 +11,9 @@ properties:
     type: integer
     default: 80
     description: "Consensus threshold in percent"
+  vsearch_identity:
+    type: number
+    default: 1.0
+    description: "Identity threshold to use when clustering with vsearch"
+    min: 0.0
+    max: 1.0
