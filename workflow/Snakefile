@@ -1,79 +1,249 @@
-# Validate config
-
-from snakemake.utils import validate
-validate(config, "schemas/config.schema.yaml")
-
 import polars as pl
 import string
+import gzip as gz
+from tempfile import NamedTemporaryFile
+from snakemake.utils import validate
+
+validate(config, "schemas/config.schema.yaml")
+
+from scripts.format_fasta import series_to_fasta
+
+
+localrules:
+    extract_input,
+    filter,
+    fill_missing,
+    calculate_consensus,
+    collect_vsearch,
+
 
 rule all:
     input:
-        "_processed/03-data.consensus_taxonomy.tsv"
+        to_genus="results/coidb.dada2.toGenus.fasta.gz",
+        to_species="results/coidb.dada2.toSpecies.fasta.gz",
+        assign_species="results/coidb.dada2.addSpecies.fasta.gz",
+        sintax_fasta="results/coidb.sintax.fasta.gz",
+        consensus="results/coidb.BOLD_BIN.consensus_taxonomy.tsv",
+        info="results/coidb.info.tsv",
+
 
 checkpoint extract_input:
+    message: "Extracting input file {config[input_file]}"
     input:
         tarball=config["input_file"],
     output:
-        directory("_extract")
+        directory("_extract"),
     log:
-        "_logs/extract_input.log"
+        "_logs/extract_input.log",
     shell:
         """
+        mkdir -p {output}
         tar -C {output} -xvf {input.tarball} > {log} 2>&1
         """
+
 
 def get_extracted(wildcards):
     checkpoint_output = checkpoints.extract_input.get(**wildcards).output[0]
     tsv = expand(
         "_extract/{f}.tsv",
-        f=glob_wildcards(os.path.join(checkpoint_output, "{f}.tsv")).f
+        f=glob_wildcards(os.path.join(checkpoint_output, "{f}.tsv")).f,
     )
     return tsv
 
+
 rule filter:
-    message: "Filter data to only include BOLD BIN records, trim and remove spurious sequences"
+    message:
+        "Filter data to only include BOLD BIN records, trim and remove spurious sequences"
     input:
-        tsv=get_extracted
+        tsv=get_extracted,
     output:
-        tsv="_processed/01-data.filtered.tsv"
+        tsv="_processed/01-data.filtered.tsv",
     log:
-        "_logs/filter.log"
+        "_logs/filter.log",
     params:
         src=workflow.source_path("scripts/filter.py"),
-        min_len=config["min_len"]
+        min_len=config["min_len"],
     shell:
         """
         python {params.src} -i {input.tsv} -o {output.tsv} -l {params.min_len} 2>{log}
         """
 
-rule fill_missing:
-    message: "Filling missing ranks"
+
+checkpoint fill_missing:
+    message:
+        "Filling missing ranks"
     input:
-        tsv=rules.filter.output.tsv
+        tsv=rules.filter.output.tsv,
     output:
-        tsv="_processed/02-data.fill_missing.tsv"
+        tsv="results/coidb.info.tsv",
     log:
-        "_logs/fill_missing.log"
+        "_logs/fill_missing.log",
     params:
-        src=workflow.source_path("scripts/fill_missing.py")
+        src=workflow.source_path("scripts/fill_missing.py"),
     shell:
         """
         python {params.src} -i {input.tsv} -o {output.tsv} 2>{log}
         """
 
+
 rule calculate_consensus:
-    message: "Calculating consensus taxonomy for BINs"
+    message:
+        "Calculating consensus taxonomy for BINs"
     input:
         tsv=rules.fill_missing.output.tsv,
     output:
-        tsv="_processed/03-data.consensus_taxonomy.tsv"
+        tsv="results/coidb.BOLD_BIN.consensus_taxonomy.tsv",
     log:
-        "_logs/calculate_consensus.log"
+        "_logs/calculate_consensus.log",
     params:
         src=workflow.source_path("scripts/consensus_taxonomy.py"),
-        threshold=config["consensus_threshold"]
+        threshold=config["consensus_threshold"],
     threads: workflow.cores
     shell:
         """
         python {params.src} -i {input.tsv} -o {output.tsv} -p {threads} -t {params.threshold} 2>{log}
+        """
+
+
+rule vsearch:
+    message:
+        "Clustering sequences in {wildcards.bin_uri}"
+    input:
+        tsv=rules.fill_missing.output.tsv,
+    output:
+        fasta=temp("_vsearch/{bin_uri}.fasta"),
+    log:
+        "_logs/vsearch_logs/{bin_uri}.log",
+    threads: 1
+    params:
+        id=config["vsearch_identity"],
+    group:
+        "vsearch"
+    resources:
+        runtime=20,
+    run:
+        # Create a temporary file to hold the sequences for vsearch
+        f = NamedTemporaryFile(mode="w", delete=False)
+        # Extract a subset of the dataframe for this BOLD BIN
+        df = (
+            pl.scan_csv(input.tsv, separator="\t")
+            .filter(pl.col("bin_uri") == wildcards.bin_uri)
+            .collect()
+        )
+        # Write a fasta file with the process ids as headers
+        fasta_series = ">" + df["processid"] + "\n" + df["seq"]
+        series_to_fasta(fasta_series, f.name)
+        # Run vsearch on the temporary fasta
+        shell(
+            f"vsearch --cluster_fast {f.name} --id {params.id} --centroids {output.fasta} --notrunclabels --threads {threads} 2>{log}"
+        )
+
+
+def get_vsearch_fastas(wildcards):
+    """
+    This function reads the dataframe of all records and finds BOLD BINs with
+    more than one record -> multi_record_bins. Sequences in these BOLD BINs will
+    be clustered using vsearch, so a list of input files is generated and
+    returned.
+    """
+    # Get the TSV file from the fill_missing checkpoint
+    checkpoint_output = checkpoints.fill_missing.get(**wildcards).output.tsv
+    # Read the dataframe with lazy API and filter to only BOLD BINs with more than one record
+    q = (
+        pl.scan_csv(checkpoint_output, separator="\t")
+        .group_by("bin_uri")
+        .len()
+        .filter(pl.col("len") > 1)
+    ).collect()
+    # multi_record_bins is a list of all BOLD BINs with more than 1 record
+    multi_record_bins = q["bin_uri"].to_list()
+    # Return a list of vsearch output files which will be used as targets for the collect_vsearch rule,
+    # thus triggering vsearch to run on these BOLD BINs
+    return expand("_vsearch/{bin_uri}.fasta", bin_uri=multi_record_bins)
+
+
+rule collect_vsearch:
+    message:
+        "Collect vsearch output"
+    input:
+        fasta=get_vsearch_fastas,
+    output:
+        fasta=temp("_processed/04-data.vsearch_clustered.fasta.gz"),
+    log:
+        "_logs/collect_vsearch.log",
+    shell:
+        """
+        cat {input.fasta} > {output.fasta} 2>{log}
+        """
+
+
+rule add_to_vsearch:
+    message:
+        "Adding records to vsearch output"
+    input:
+        tsv=rules.fill_missing.output.tsv,
+        fasta=rules.collect_vsearch.output.fasta,
+    output:
+        fasta="results/coidb.clustered.fasta.gz",
+    run:
+        # Collect all BOLD BINs with just 1 record
+        q = (
+            pl.scan_csv(input.tsv, separator="\t")
+            .group_by("bin_uri")
+            .len()
+            .filter(pl.col("len") == 1)
+        ).collect()
+        single_record_bins = q["bin_uri"].to_list()
+        # Read rows matching only the single_record_bins
+        df = (
+            pl.scan_csv(input.tsv, separator="\t").filter(
+                pl.col("bin_uri").is_in(single_record_bins)
+            )
+        ).collect()
+        # Write records to a temporary file
+        f = NamedTemporaryFile(mode="w", delete=False)
+        fasta_series = ">" + df["processid"] + "\n" + df["seq"]
+        series_to_fasta(fasta_series, f.name)
+        # Concatenate single record bins fasta + vsearch clustered fasta
+        shell("cat {f.name} {input.fasta} | gzip -c > {output.fasta}")
+
+
+rule format_sintax:
+    message:
+        "Generate SINTAX format fasta file"
+    input:
+        fasta=rules.add_to_vsearch.output.fasta,
+        tsv=rules.fill_missing.output.tsv,
+        consensus=rules.calculate_consensus.output.tsv,
+    output:
+        fasta="results/coidb.sintax.fasta.gz",
+    log:
+        "_logs/format_sintax.log",
+    params:
+        src=workflow.source_path("scripts/format_fasta.py"),
+    shell:
+        """
+        python {params.src} --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} sintax --outfile {output} 2>{log}
+        """
+
+
+rule format_dada2:
+    message:
+        "Generate DADA2 format fasta files"
+    input:
+        fasta=rules.add_to_vsearch.output.fasta,
+        tsv=rules.fill_missing.output.tsv,
+        consensus=rules.calculate_consensus.output.tsv,
+    output:
+        to_genus="results/coidb.dada2.toGenus.fasta.gz",
+        to_species="results/coidb.dada2.toSpecies.fasta.gz",
+        assign_species="results/coidb.dada2.addSpecies.fasta.gz",
+    log:
+        "_logs/format_dada2.log",
+    params:
+        src=workflow.source_path("scripts/format_fasta.py"),
+    shell:
+        """
+        python {params.src} --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} dada2 \
+            --outfile_toGenus {output.to_genus} --outfile_toSpecies {output.to_species} --outfile_assignSpecies {output.assign_species} 2>{log}
         """
