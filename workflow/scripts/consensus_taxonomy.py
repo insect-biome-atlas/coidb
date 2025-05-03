@@ -105,7 +105,7 @@ def main(infile, outfile, threshold, cpus=1):
         bin_taxonomy.group_by("bin_uri").len("bin_rows"), on="bin_uri"
     ).filter(pl.col("bin_rows") > 1)
     sys.stderr.write(
-        f"Found {bin_taxonomy_ambig.shape[0]} BOLD BINs with non-unique lineages\n"
+        f"Found {bin_taxonomy_ambig["bin_uri"].n_unique()} BOLD BINs with non-unique lineages\n"
     )
     # Partition the ambiguous BOLD BINs into a list of dataframes
     dataframes = bin_taxonomy_ambig.partition_by("bin_uri")
@@ -118,7 +118,7 @@ def main(infile, outfile, threshold, cpus=1):
         .drop(["n", "bin_rows"])
     )
     sys.stderr.write(
-        f"Found {bin_taxonomy_unambig.shape[0]} BOLD BINs with unique lineages\n"
+        f"Found {bin_taxonomy_unambig["bin_uri"].n_unique()} BOLD BINs with unique lineages\n"
     )
     sys.stderr.write(
         f"Calculating consensus taxonomies for non-unique BINS using {cpus} cpus\n"
