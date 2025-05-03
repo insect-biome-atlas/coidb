@@ -47,10 +47,10 @@ def main(infile, outfile, min_len=500):
         with_columns(seq=pl.col("nuc").str.to_uppercase())
         .
         # remove left gap characters
-        with_columns(seq=pl.col("seq").str.replace(r"^-+", ""))
+        with_columns(seq=pl.col("seq").str.strip_chars_start("-"))
         .
         # remove right gap characters
-        with_columns(seq=pl.col("seq").str.replace(r"$-+", ""))
+        with_columns(seq=pl.col("seq").str.strip_chars_end("-"))
         .
         # remove remaining seqs with non DNA characters
         filter(~pl.col("seq").str.contains_any(non_DNA))
@@ -82,7 +82,7 @@ if __name__ == "__main__":
         "-o", "--outfile", type=str, help="Output TSV file", required=True
     )
     parser.add_argument(
-        "-l", "--min_len", type=int, help="Minimum length of sequences to include"
+        "-l", "--min_len", type=int, help="Minimum length of sequences to include", default=0,
     )
     args = parser.parse_args()
     main(infile=args.infile, outfile=args.outfile, min_len=args.min_len)
