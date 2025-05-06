@@ -1,3 +1,4 @@
 input_file: ""
 min_len: 500
 consensus_threshold: 80
+vsearch_identity: 1.0
