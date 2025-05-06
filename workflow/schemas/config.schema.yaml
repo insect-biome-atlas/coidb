@@ -3,6 +3,10 @@ properties:
   input_file:
     type: string
     description: "Input file for workflow"
+  output_dir: 
+    type: string
+    description: "Output directory"
+    default: "results"
   min_len:
     type: integer
     default: 500

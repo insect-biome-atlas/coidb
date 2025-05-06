@@ -19,22 +19,38 @@ localrules:
 
 rule all:
     input:
-        to_genus="results/coidb.dada2.toGenus.fasta.gz",
-        to_species="results/coidb.dada2.toSpecies.fasta.gz",
-        assign_species="results/coidb.dada2.addSpecies.fasta.gz",
-        sintax_fasta="results/coidb.sintax.fasta.gz",
-        consensus="results/coidb.BOLD_BIN.consensus_taxonomy.tsv",
-        info="results/coidb.info.tsv",
+        expand(
+            "{output_dir}/{f}",
+            output_dir=config["output_dir"],
+            f=[
+                "coidb.dada2.toGenus.fasta.gz",
+                "coidb.dada2.toSpecies.fasta.gz",
+                "coidb.dada2.addSpecies.fasta.gz",
+                "coidb.sintax.fasta.gz",
+                "coidb.BOLD_BIN.consensus_taxonomy.tsv.gz",
+                "coidb.info.tsv.gz"
+            ]
+        )
 
+rule gzip:
+    message: "Compressing {wildcards.f}"
+    input:
+        "{f}.tsv"
+    output:
+        "{f}.tsv.gz"
+    shell:
+        """
+        gzip -c {input} > {output}
+        """
 
 checkpoint extract_input:
     message: "Extracting input file {config[input_file]}"
     input:
         tarball=config["input_file"],
     output:
-        directory("_extract"),
+        directory(os.path.join(config["output_dir"],"_extract")),
     log:
-        "_logs/extract_input.log",
+        os.path.join(config["output_dir"], "_logs/extract_input.log"),
     shell:
         """
         mkdir -p {output}
@@ -46,8 +62,9 @@ def get_extracted(wildcards):
     if config["input_file"].endswith(".tar.gz"):
         checkpoint_output = checkpoints.extract_input.get(**wildcards).output[0]
         tsv = expand(
-            "_extract/{f}.tsv",
+            "{output_dir}/_extract/{f}.tsv",
             f=glob_wildcards(os.path.join(checkpoint_output, "{f}.tsv")).f,
+            output_dir=config["output_dir"]
         )
     elif config["input_file"].endswith(".tsv"):
         tsv = config["input_file"]
@@ -60,9 +77,9 @@ rule filter:
     input:
         tsv=get_extracted,
     output:
-        tsv="_processed/01-data.filtered.tsv",
+        tsv=os.path.join(config["output_dir"], "_processed/01-data.filtered.tsv"),
     log:
-        "_logs/filter.log",
+        os.path.join(config["output_dir"], "_logs/filter.log"),
     params:
         src=workflow.source_path("scripts/filter.py"),
         min_len=config["min_len"],
@@ -78,9 +95,9 @@ checkpoint fill_missing:
     input:
         tsv=rules.filter.output.tsv,
     output:
-        tsv="results/coidb.info.tsv",
+        tsv=temp(os.path.join(config["output_dir"], "coidb.info.tsv")),
     log:
-        "_logs/fill_missing.log",
+        os.path.join(config["output_dir"], "_logs/fill_missing.log"),
     params:
         src=workflow.source_path("scripts/fill_missing.py"),
     shell:
@@ -95,9 +112,9 @@ rule calculate_consensus:
     input:
         tsv=rules.fill_missing.output.tsv,
     output:
-        tsv="results/coidb.BOLD_BIN.consensus_taxonomy.tsv",
+        tsv=temp(os.path.join(config["output_dir"], "coidb.BOLD_BIN.consensus_taxonomy.tsv")),
     log:
-        "_logs/calculate_consensus.log",
+        os.path.join(config["output_dir"], "_logs/calculate_consensus.log"),
     params:
         src=workflow.source_path("scripts/consensus_taxonomy.py"),
         threshold=config["consensus_threshold"],
@@ -114,9 +131,17 @@ rule vsearch:
     input:
         tsv=rules.fill_missing.output.tsv,
     output:
-        fasta=temp("_vsearch/{bin_uri}.fasta"),
+        fasta=temp(
+                expand(
+                    "{output_dir}/{{bin_uri}}.fasta",
+                    output_dir=config["output_dir"]
+                )
+            ),
     log:
-        "_logs/vsearch_logs/{bin_uri}.log",
+        expand(
+            "{output_dir}/_logs/vsearch_logs/{{bin_uri}}.log",
+            output_dir=config["output_dir"]
+        )
     threads: 1
     params:
         id=config["vsearch_identity"],
@@ -162,7 +187,7 @@ def get_vsearch_fastas(wildcards):
     multi_record_bins = q["bin_uri"].to_list()
     # Return a list of vsearch output files which will be used as targets for the collect_vsearch rule,
     # thus triggering vsearch to run on these BOLD BINs
-    return expand("_vsearch/{bin_uri}.fasta", bin_uri=multi_record_bins)
+    return expand("{output_dir}/_vsearch/{bin_uri}.fasta", bin_uri=multi_record_bins, output_dir=config["output_dir"])
 
 
 rule collect_vsearch:
@@ -171,9 +196,9 @@ rule collect_vsearch:
     input:
         fasta=get_vsearch_fastas,
     output:
-        fasta=temp("_processed/04-data.vsearch_clustered.fasta.gz"),
+        fasta=temp(os.path.join(config["output_dir"], "_processed/04-data.vsearch_clustered.fasta.gz")),
     log:
-        "_logs/collect_vsearch.log",
+        os.path.join(config["output_dir"], "_logs/collect_vsearch.log"),
     shell:
         """
         cat {input.fasta} > {output.fasta} 2>{log}
@@ -187,7 +212,7 @@ rule add_to_vsearch:
         tsv=rules.fill_missing.output.tsv,
         fasta=rules.collect_vsearch.output.fasta,
     output:
-        fasta="results/coidb.clustered.fasta.gz",
+        fasta=os.path.join(config["output_dir"], "coidb.clustered.fasta.gz"),
     run:
         # Collect all BOLD BINs with just 1 record
         q = (
@@ -219,9 +244,9 @@ rule format_sintax:
         tsv=rules.fill_missing.output.tsv,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        fasta="results/coidb.sintax.fasta.gz",
+        fasta=os.path.join(config["output_dir"], "coidb.sintax.fasta.gz"),
     log:
-        "_logs/format_sintax.log",
+        os.path.join(config["output_dir"], "_logs/format_sintax.log"),
     params:
         src=workflow.source_path("scripts/format_fasta.py"),
     shell:
@@ -238,11 +263,11 @@ rule format_dada2:
         tsv=rules.fill_missing.output.tsv,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        to_genus="results/coidb.dada2.toGenus.fasta.gz",
-        to_species="results/coidb.dada2.toSpecies.fasta.gz",
-        assign_species="results/coidb.dada2.addSpecies.fasta.gz",
+        to_genus=os.path.join(config["output_dir"], "coidb.dada2.toGenus.fasta.gz"),
+        to_species=os.path.join(config["output_dir"], "coidb.dada2.toSpecies.fasta.gz"),
+        assign_species=os.path.join(config["output_dir"], "coidb.dada2.addSpecies.fasta.gz"),
     log:
-        "_logs/format_dada2.log",
+        os.path.join(config["output_dir"], "_logs/format_dada2.log"),
     params:
         src=workflow.source_path("scripts/format_fasta.py"),
     shell:
