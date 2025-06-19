@@ -1,17 +1,28 @@
-[project]
-authors = ["John Sundh <john.sundh@scilifelab.se>"]
-channels = ["conda-forge", "bioconda"]
-description = "A tool to generate a database of COI-5P sequences"
+[workspace] 
+channels = [
+  "https://prefix.dev/pixi-build-backends",
+  "https://prefix.dev/conda-forge",
+  "bioconda"
+]
+platforms = ["linux-64", "osx-arm64", "osx-64"]
+preview = ["pixi-build"]
+
+[dependencies] 
+coidb = { path = "." }
+
+[package] 
 name = "coidb"
-platforms = ["osx-arm64", "osx-64", "linux-64"]
 version = "0.1.0"
 
-[tasks]
+[package.build] 
+backend = { name = "pixi-build-python", version = "0.1.*" }
 
-[dependencies]
+[package.host-dependencies] 
+hatchling = "==1.26.3"
+
+[package.run-dependencies]
+snk-cli = "==0.7.2"
 snakemake = ">=9"
 python = "*"
-vsearch = ">=2.28.1"
+vsearch = "*"
 polars = "*"
-snakefmt = "*"
-snk = "*"
