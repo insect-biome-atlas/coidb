@@ -3,18 +3,7 @@
 from argparse import ArgumentParser
 import polars as pl
 import gzip as gz
-
-
-def series_to_fasta(series, outfile, compress=False):
-    """
-    Writes a polars Series to a file in fasta format
-    """
-    if compress:
-        with gz.open(outfile, "wt") as fhout:
-            fhout.write("\n".join(series.to_list()))
-    else:
-        with open(outfile, "w") as fhout:
-            fhout.write("\n".join(series.to_list()))
+from coidb import series_to_fasta
 
 
 def format_dada2(df, outfile_toGenus, outfile_toSpecies, outfile_assignSpecies):
