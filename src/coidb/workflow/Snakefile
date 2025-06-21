@@ -81,11 +81,10 @@ rule filter:
     log:
         os.path.join(config["output_dir"], "_logs/filter.log"),
     params:
-        src=workflow.source_path("scripts/filter.py"),
         min_len=config["min_len"],
     shell:
         """
-        python {params.src} -i {input.tsv} -o {output.tsv} -l {params.min_len} 2>{log}
+        filter-records -i {input.tsv} -o {output.tsv} -l {params.min_len} 2>{log}
         """
 
 
@@ -98,11 +97,9 @@ checkpoint fill_missing:
         tsv=temp(os.path.join(config["output_dir"], "coidb.info.tsv")),
     log:
         os.path.join(config["output_dir"], "_logs/fill_missing.log"),
-    params:
-        src=workflow.source_path("scripts/fill_missing.py"),
     shell:
         """
-        python {params.src} -i {input.tsv} -o {output.tsv} 2>{log}
+        fill-missing -i {input.tsv} -o {output.tsv} 2>{log}
         """
 
 
@@ -116,12 +113,11 @@ rule calculate_consensus:
     log:
         os.path.join(config["output_dir"], "_logs/calculate_consensus.log"),
     params:
-        src=workflow.source_path("scripts/consensus_taxonomy.py"),
         threshold=config["consensus_threshold"],
     threads: workflow.cores
     shell:
         """
-        python {params.src} -i {input.tsv} -o {output.tsv} -p {threads} -t {params.threshold} 2>{log}
+        consensus-taxonomy -i {input.tsv} -o {output.tsv} -p {threads} -t {params.threshold} 2>{log}
         """
 
 
@@ -247,11 +243,9 @@ rule format_sintax:
         fasta=os.path.join(config["output_dir"], "coidb.sintax.fasta.gz"),
     log:
         os.path.join(config["output_dir"], "_logs/format_sintax.log"),
-    params:
-        src=workflow.source_path("scripts/format_fasta.py"),
     shell:
         """
-        python {params.src} --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} sintax --outfile {output} 2>{log}
+        format-fasta --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} sintax --outfile {output} 2>{log}
         """
 
 
@@ -268,10 +262,8 @@ rule format_dada2:
         assign_species=os.path.join(config["output_dir"], "coidb.dada2.addSpecies.fasta.gz"),
     log:
         os.path.join(config["output_dir"], "_logs/format_dada2.log"),
-    params:
-        src=workflow.source_path("scripts/format_fasta.py"),
     shell:
         """
-        python {params.src} --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} dada2 \
+        format-fasta --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} dada2 \
             --outfile_toGenus {output.to_genus} --outfile_toSpecies {output.to_species} --outfile_assignSpecies {output.assign_species} 2>{log}
         """

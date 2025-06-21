@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 import string
 
 
-def main(infile, outfile, min_len=500):
+def filter_tsv(infile, outfile, min_len=0):
     letters = set(list(string.ascii_uppercase) + ["-"])
     DNA = set(["A", "C", "T", "G"])
     non_DNA = list(letters.difference(DNA))
@@ -73,7 +73,7 @@ def main(infile, outfile, min_len=500):
     ).sink_csv(outfile, separator="\t")
 
 
-if __name__ == "__main__":
+def main():
     parser = ArgumentParser()
     parser.add_argument(
         "-i", "--infile", type=str, help="Input TSV file", required=True
@@ -82,7 +82,11 @@ if __name__ == "__main__":
         "-o", "--outfile", type=str, help="Output TSV file", required=True
     )
     parser.add_argument(
-        "-l", "--min_len", type=int, help="Minimum length of sequences to include", default=0,
+        "-l",
+        "--min_len",
+        type=int,
+        help="Minimum length of sequences to include",
+        default=0,
     )
     args = parser.parse_args()
-    main(infile=args.infile, outfile=args.outfile, min_len=args.min_len)
+    filter_tsv(args.infile, args.outfile, args.min_len)

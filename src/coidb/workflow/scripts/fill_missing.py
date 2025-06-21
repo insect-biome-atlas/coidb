@@ -4,8 +4,19 @@ from argparse import ArgumentParser
 import polars as pl
 
 
-def main(infile, outfile):
-    tsv = pl.scan_csv(infile, has_header=True, separator="\t", null_values=["None"])
+def main():
+    parser = ArgumentParser()
+    parser.add_argument(
+        "-i", "--infile", type=str, help="Input TSV file", required=True
+    )
+    parser.add_argument(
+        "-o", "--outfile", type=str, help="Output TSV file", required=True
+    )
+    args = parser.parse_args()
+
+    tsv = pl.scan_csv(
+        args.infile, has_header=True, separator="\t", null_values=["None"]
+    )
     (
         tsv.with_columns(
             # if kingdom is null, set to "unassigned"
@@ -111,16 +122,4 @@ def main(infile, outfile):
             .otherwise(pl.col("species"))
             .alias("species")
         )
-    ).sink_csv(outfile, separator="\t")
-
-
-if __name__ == "__main__":
-    parser = ArgumentParser()
-    parser.add_argument(
-        "-i", "--infile", type=str, help="Input TSV file", required=True
-    )
-    parser.add_argument(
-        "-o", "--outfile", type=str, help="Output TSV file", required=True
-    )
-    args = parser.parse_args()
-    main(infile=args.infile, outfile=args.outfile)
+    ).sink_csv(args.outfile, separator="\t")

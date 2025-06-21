@@ -11,7 +11,7 @@ def calculate_consensus(df, threshold=80):
     """
     Calculate consensus taxonomy for a dataframe. The dataframe is expected to
     have the following format:
-    
+
     kingdom	    phylum	        class	    order	        family	        genus	    species	        bin_uri	        n	bin_rows
     "Animalia"	"Arthropoda"	"Insecta"	"Lepidoptera"	"Oecophoridae"	"Garrha"	"Garrha carnea"	"BOLD:AGS2783"	41	3
     "Animalia"	"Arthropoda"	"Insecta"	"Lepidoptera"	"Oecophoridae"	"Garrha"	"Garrha_X"	    "BOLD:AGS2783"	7	3
@@ -77,13 +77,34 @@ def worker(arg):
     return calculate_consensus(df=df, threshold=threshold)
 
 
-def main(infile, outfile, threshold, cpus=1):
-    sys.stderr.write(f"Loading data from {infile}\n")
+def main():
+    parser = ArgumentParser()
+    parser.add_argument("-i", "--infile", type=str, help="Input TSV file")
+    parser.add_argument(
+        "-o",
+        "--outfile",
+        type=str,
+        help="Output file with consensus taxonomies",
+        required=True,
+    )
+    parser.add_argument(
+        "-t",
+        "--threshold",
+        type=int,
+        default=80,
+        help="Consensus threshold (in %%) for assigning a taxonomic label at a rank",
+    )
+    parser.add_argument(
+        "-p", dest="cpus", type=int, default=1, help="Number of cpus to use"
+    )
+    args = parser.parse_args()
+
+    sys.stderr.write(f"Loading data from {args.infile}\n")
     # Load data with lazy API, group by taxonomic ranks + BOLD BIN and count
     # unique lineages per BIN. Then sort dataframe by number of records with
     # each lineage per BIN.
     bin_taxonomy = (
-        pl.scan_csv(infile, separator="\t")
+        pl.scan_csv(args.infile, separator="\t")
         .group_by(
             [
                 "kingdom",
@@ -121,37 +142,13 @@ def main(infile, outfile, threshold, cpus=1):
         f"Found {bin_taxonomy_unambig["bin_uri"].n_unique()} BOLD BINs with unique lineages\n"
     )
     sys.stderr.write(
-        f"Calculating consensus taxonomies for non-unique BINS using {cpus} cpus\n"
+        f"Calculating consensus taxonomies for non-unique BINS using {args.cpus} cpus\n"
     )
     # Apply the consensus function to each dataframe in the dataframes list
     # Use the worker function to supply the threshold as an argument
-    with Pool(cpus) as p:
-        consensus_list = p.map(worker, ((df, threshold) for df in dataframes))
+    with Pool(args.cpus) as p:
+        consensus_list = p.map(worker, ((df, args.threshold) for df in dataframes))
     sys.stderr.write(f"Concatenating results\n")
     # Concatenate the dataframes in the consensus_list + the unambiguous dataframe
-    consensus_df = pl.concat(consensus_list+[bin_taxonomy_unambig])
-    consensus_df.write_csv(outfile, separator="\t")
-
-
-if __name__ == "__main__":
-    parser = ArgumentParser()
-    parser.add_argument("-i", "--infile", type=str, help="Input TSV file")
-    parser.add_argument(
-        "-o",
-        "--outfile",
-        type=str,
-        help="Output file with consensus taxonomies",
-        required=True,
-    )
-    parser.add_argument(
-        "-t",
-        "--threshold",
-        type=int,
-        default=80,
-        help="Consensus threshold (in %%) for assigning a taxonomic label at a rank",
-    )
-    parser.add_argument("-p", type=int, default=1, help="Number of cpus to use")
-    args = parser.parse_args()
-    main(
-        infile=args.infile, outfile=args.outfile, threshold=args.threshold, cpus=args.p
-    )
+    consensus_df = pl.concat(consensus_list + [bin_taxonomy_unambig])
+    consensus_df.write_csv(args.outfile, separator="\t")

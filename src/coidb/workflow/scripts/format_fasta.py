@@ -131,33 +131,7 @@ def read_records(f):
     return records
 
 
-def main(args):
-    records = read_records(args.fasta)
-    # Create a dataframe of only the records from the clustered fasta file
-    # and only keep the processid, bin_uri and seq columns
-    df = (
-        pl.scan_csv(args.tsv, separator="\t")
-        .filter(pl.col("processid").is_in(records))
-        .select(["processid", "bin_uri", "seq"])
-        .collect()
-    )
-    # Read consensus taxonomy for BOLD BINs
-    consensus = pl.read_csv(args.consensus, separator="\t")
-    # Merge dataframe with consensus, adding BOLD BIN taxonomy to records
-    df = consensus.join(df, on="bin_uri")
-    # Write the requested format
-    if args.format == "sintax":
-        format_sintax(df, args.outfile)
-    elif args.format == "dada2":
-        format_dada2(
-            df,
-            outfile_toGenus=args.outfile_toGenus,
-            outfile_toSpecies=args.outfile_toSpecies,
-            outfile_assignSpecies=args.outfile_assignSpecies,
-        )
-
-
-if __name__ == "__main__":
+def main():
     parser = ArgumentParser()
     parser.add_argument(
         "--tsv",
@@ -199,4 +173,27 @@ if __name__ == "__main__":
         help="Output file for assignSpecies",
     )
     args = parser.parse_args()
-    main(args)
+
+    records = read_records(args.fasta)
+    # Create a dataframe of only the records from the clustered fasta file
+    # and only keep the processid, bin_uri and seq columns
+    df = (
+        pl.scan_csv(args.tsv, separator="\t")
+        .filter(pl.col("processid").is_in(records))
+        .select(["processid", "bin_uri", "seq"])
+        .collect()
+    )
+    # Read consensus taxonomy for BOLD BINs
+    consensus = pl.read_csv(args.consensus, separator="\t")
+    # Merge dataframe with consensus, adding BOLD BIN taxonomy to records
+    df = consensus.join(df, on="bin_uri")
+    # Write the requested format
+    if args.format == "sintax":
+        format_sintax(df, args.outfile)
+    elif args.format == "dada2":
+        format_dada2(
+            df,
+            outfile_toGenus=args.outfile_toGenus,
+            outfile_toSpecies=args.outfile_toSpecies,
+            outfile_assignSpecies=args.outfile_assignSpecies,
+        )
