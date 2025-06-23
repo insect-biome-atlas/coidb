@@ -1,0 +1,5 @@
+input_file: "tests/info.tsv"
+output_dir: "tests/test3"
+min_len: 100
+consensus_threshold: 50
+vsearch_identity: 0.97
