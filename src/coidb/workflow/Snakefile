@@ -11,9 +11,7 @@ from coidb import series_to_fasta
 
 localrules:
     extract_input,
-    filter,
-    fill_missing,
-    calculate_consensus,
+    gzip,
     collect_vsearch,
 
 
