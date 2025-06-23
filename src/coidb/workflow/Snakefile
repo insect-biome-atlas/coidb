@@ -114,6 +114,8 @@ rule calculate_consensus:
         os.path.join(config["output_dir"], "_logs/calculate_consensus.log"),
     params:
         threshold=config["consensus_threshold"],
+        ranks=config["ranks"],
+        method=config["consensus_method"]
     threads: workflow.cores
     shell:
         """
