@@ -1,0 +1,30 @@
+default-resources: 
+  slurm_account: <your-slurm-account>
+  slurm_partition: shared
+  runtime: 240
+  cpus_per_task: 1
+  mem_mb: 888
+
+
+set-resources:
+  filter:
+    mem_mb: 3552
+  fill_missing:
+    mem_mb: 3552
+  calculate_consensus:
+    mem_mb: 17760
+  add_to_vsearch:
+    mem_mb: 3552
+
+set-threads:
+  calculate_consensus: 10
+
+printshellcmds: False
+local-cores: 1
+keep-going: True
+rerun-triggers: mtime
+rerun-incomplete: True
+local-cores: 1
+jobs: 100
+latency-wait: 5
+executor: slurm
