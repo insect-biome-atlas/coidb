@@ -15,6 +15,22 @@ properties:
     type: integer
     default: 80
     description: "Consensus threshold in percent"
+  consensus_method:
+    type: string
+    default: "full"
+    description: "Method to use for calculating consensus, see README"
+    enum: ["rank", "full"]
+  ranks:
+    type: array
+    default: 
+      - "kingdom"
+      - "phylum"
+      - "class"
+      - "order"
+      - "family"
+      - "genus"
+      - "species"
+    description: "Ranks to use for calculating consensus and generating fastas"
   vsearch_identity:
     type: number
     default: 1.0

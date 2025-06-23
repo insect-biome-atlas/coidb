@@ -2,4 +2,6 @@ input_file: ""
 output_dir: "results"
 min_len: 500
 consensus_threshold: 80
+consensus_method: "full"
+ranks: ["kingdom","phylum","class","order","family","genus","species"]
 vsearch_identity: 1.0
