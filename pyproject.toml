@@ -1,16 +1,14 @@
 [project]
 dependencies = ["snk-cli==0.7.2"]
 name = "coidb"
-#dynamic = ["version"]
-#description = ''
-#readme = "README.md"
+readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 keywords = []
 authors = [
   { name = "John Sundh", email = "john.sundh@scilifelab.se" },
 ]
-version = "0.1.0"
+version = "0.6.0"
 [project.scripts]
 coidb = "coidb.cli:coidb"
 filter-records = "coidb.scripts.filter:main"
