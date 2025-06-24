@@ -6,6 +6,8 @@ channels = [
 ]
 platforms = ["linux-64", "osx-arm64", "osx-64"]
 preview = ["pixi-build"]
+readme = "README.md"
+
 
 [dependencies] 
 coidb = { path = "." }
@@ -26,3 +28,7 @@ snakemake = ">=9"
 python = "*"
 vsearch = "*"
 polars = "*"
+snakemake-executor-plugin-slurm = "*"
+
+[tasks]
+test = "pytest tests/test.py"
