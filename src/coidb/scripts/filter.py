@@ -15,6 +15,7 @@ def filter_tsv(infile, outfile, min_len=0):
         separator="\t",
         schema_overrides={"nuc_basecount": int},
         ignore_errors=True,
+        low_memory=True,
     )
     (
         tsv.
