@@ -1,6 +1,6 @@
 # COI DB
 
-```{mermaid}
+```mermaid
 ---
 config:
   theme: neutral
