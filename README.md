@@ -6,31 +6,49 @@ config:
   theme: neutral
   layout: elk
 ---
-flowchart LR
-    subgraph BOLD data
-        A["filter"] --> B["fill_missing"]
-    end
-    subgraph clustering
-        B --> I["vsearch"]
-        I --> J["collect_vsearch"]
-    end
-    subgraph consensus taxonomy
-    C["calculate_consensus"] 
-    end
-    B --> C
-    subgraph formatting
-    D["format_sintax"]
-    E["format_dada2"]
-    end
-    C --> D["format_sintax"] & E["format_dada2"]
-    subgraph GBIF backbone
-    F["download_backbone"] --> G["parse_backbone"]
-    G --> H["fill_missing_backbone"]
-    end
+flowchart TD
+ subgraph subGraph0["BOLD data"]
+        BOLD[("BOLD Data package")]
+        A["filter"]
+        B["fill_missing"]
+  end
+ subgraph clustering["clustering"]
+        I["vsearch"]
+        J["collect_vsearch"]
+  end
+ subgraph subGraph2["Consensus taxonomy"]
+        C["calculate_consensus"]
+  end
+ subgraph formatting["Formatting"]
+        D["format_sintax"]
+        E["format_dada2"]
+  end
+ subgraph subGraph4["GBIF backbone (doi.org/10.15468/39omei)"]
+        GBIF[("GBIF backbone")]
+        G["parse_backbone"]
+        F["download_backbone"]
+        H["fill_missing_backbone"]
+  end
+    B --> file5>"coidb.info.tsv.gz"] & I & C
+    C --> file6>"coidb.BOLD_BIN.consensus_taxonomy.tsv.gz"] & D & E
+    BOLD --> A
+    A --> B
+    I --> J
+    GBIF --> F
+    F --> G
+    G --> H
     H --> C
-    
     J --> D & E
-
+    D --> file1>"coidb.sintax.fasta.gz"]
+    E --> file2>"coidb.dada2.toGenus.fasta.gz"] & file3>"coidb.dada2.toSpecies.fasta.gz"] & file4>"coidb.dada2.addSpecies.fasta.gz"]
+    style BOLD fill:#BBDEFB
+    style GBIF fill:#C8E6C9
+    style file5 fill:#FFF9C4
+    style file6 fill:#FFF9C4
+    style file1 fill:#FFF9C4
+    style file2 fill:#FFF9C4
+    style file3 fill:#FFF9C4
+    style file4 fill:#FFF9C4
 ```
 
 ## Installation
