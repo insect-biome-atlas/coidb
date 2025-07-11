@@ -1,14 +1,134 @@
 # COI DB
 
-## Retrieve data
+```{mermaid}
+---
+config:
+  theme: neutral
+  layout: elk
+---
+flowchart LR
+    subgraph BOLD data
+        A["filter"] --> B["fill_missing"]
+    end
+    subgraph clustering
+        B --> I["vsearch"]
+        I --> J["collect_vsearch"]
+    end
+    subgraph consensus taxonomy
+    C["calculate_consensus"] 
+    end
+    B --> C
+    subgraph formatting
+    D["format_sintax"]
+    E["format_dada2"]
+    end
+    C --> D["format_sintax"] & E["format_dada2"]
+    subgraph GBIF backbone
+    F["download_backbone"] --> G["parse_backbone"]
+    G --> H["fill_missing_backbone"]
+    end
+    H --> C
+    
+    J --> D & E
+
+```
+
+## Installation
+
+```mermaid
+
+```
+
+### Install with pixi from source
+
+1. First install [pixi](https://pixi.sh/latest/#installation)
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | sh
+```
+
+2. Then clone the GitHub repository and change into the `coidb` directory
+
+```bash
+git clone git@github.com:insect-biome-atlas/coidb.git
+cd coidb
+```
+
+3. Install the `coidb` package with pixi and start a shell in the installed environment
+
+```bash
+pixi shell
+```
+
+If the installation worked you should be able to run `coidb -h`. Proceed to the [Configuration]() section to see how to configure coidb.
+
+### Install with Conda
+
+1. Make sure [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html) is installed on your system.
+
+2. Create a new environment with `coidb` installed:
+
+```bash
+conda create -n coidb -c bioconda coidb
+```
+
+3. Activate the `coidb` environment:
+
+```bash
+conda activate coidb
+```
+
+## Configuration
+
+You can generate a default configuration file by running:
+
+```bash
+coidb config > config.yml
+```
+
+This creates a new file `config.yml` with the following default parameters:
+
+```yaml
+consensus_method: full
+consensus_threshold: 80
+input_file: ''
+min_len: 500
+output_dir: results
+ranks:
+- kingdom
+- phylum
+- class
+- order
+- family
+- genus
+- species
+vsearch_identity: 1.0
+```
+
+In order to run `coidb` you need to [obtain a data file](#obtain-data) and
+modify the `input_file:` parameter so that it points to the downloaded
+`*.tar.gz` data file, _e.g._:
+
+```yaml
+input_file: '<path-to-download>.tar.gz'
+```
+
+## Obtain data
 
 1. Go to the BOLD systems [data package page](https://bench.boldsystems.org/index.php/datapackages/Latest).
+2. Login is required to access files on this page, so either login or sign up. 
+3. Click the **Data package (tar.gz compressed)** download button, accept the terms and click **Download** to obtain a temporary download link. 
+4. Use the link to download the data package which will be named `BOLD_Public.<dd>-<Mmm>-<YYYY>.tar.gz`, for example `BOLD_Public.20-Jun-2025.tar.gz`.
 
-Login is required to access files on this page, so either login or sign up. Click the **Data package (tar.gz compressed)** download button, wait for the download to finish, then 
+The downloaded file can now be used as input to `coidb`.
 
 BOLD citation:
 
 Ratnasingham, Sujeevan, and Paul D N Hebert. “bold: The Barcode of Life Data System (http://www.barcodinglife.org).” Molecular ecology notes vol. 7,3 (2007): 355-364. doi:10.1111/j.1471-8286.2007.01678.x
+
+
+
+---
 
 ## Overview
 This tool downloads sequences + metadata from [GBIF](https://hosted-datasets.gbif.org/)
