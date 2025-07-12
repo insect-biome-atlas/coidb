@@ -3,6 +3,9 @@
 import polars as pl
 from argparse import ArgumentParser
 import string
+import sys
+import os
+from coidb import get_header, extract_columns
 
 
 def filter_tsv(infile, outfile, min_len=0):
@@ -90,4 +93,39 @@ def main():
         default=0,
     )
     args = parser.parse_args()
-    filter_tsv(args.infile, args.outfile, args.min_len)
+    # proper_header defines the columns required for filtering
+    proper_header = [
+        "processid",
+        "bin_uri",
+        "kingdom",
+        "phylum",
+        "class",
+        "order",
+        "family",
+        "genus",
+        "species",
+        "nuc",
+        "nuc_basecount",
+        "marker_code",
+    ]
+    infile = args.infile
+    header = get_header(args.infile)
+    # If the header does not match proper_header, get indices of the required
+    # columns and use extract_non_proper to write these to a temporary file
+    if header != proper_header:
+        missing_cols = ",".join(list(set(proper_header).difference(header)))
+        if len(missing_cols) > 0:
+            missing_cols = ",".join(list(set(proper_header).difference(header)))
+            sys.exit(
+                f"Not all required columns found in {args.infile}. Missing columns: {missing_cols}"
+            )
+        indices = [header.index(x) for x in proper_header]
+        infile = extract_columns(args.infile, indices)
+        sys.stderr.write(
+            f"Wrote columns {','.join([str(x) for x in indices])} from {args.infile} to {infile}\n"
+        )
+    sys.stderr.write(f"Reading from {infile}\n")
+    filter_tsv(infile, args.outfile, args.min_len)
+    if infile != args.infile:
+        sys.stderr.write(f"Removing {infile}\n")
+        os.remove(infile)
