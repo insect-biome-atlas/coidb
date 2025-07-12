@@ -20,7 +20,8 @@ localrules:
     extract_input,
     gzip,
     collect_vsearch,
-    download_backbone
+    download_backbone,
+    concat_timestamps
 
 
 rule all:
@@ -294,7 +295,7 @@ rule add_to_vsearch:
         ).collect()
         # Write records to a temporary file
         f = NamedTemporaryFile(mode="w", delete=False)
-        fasta_series = ">" + df["processid"] + "\n" + df["seq"]+"\n"
+        fasta_series = ">" + df["processid"] + "\n" + df["seq"]
         series_to_fasta(fasta_series, f.name)
         # Concatenate single record bins fasta + vsearch clustered fasta
         shell("cat {f.name} {input.fasta} | gzip -c > {output.fasta}")
