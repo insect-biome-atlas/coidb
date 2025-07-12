@@ -17,7 +17,7 @@ properties:
     description: "Consensus threshold in percent"
   consensus_method:
     type: string
-    default: "full"
+    default: "rank"
     description: "Method to use for calculating consensus, see README"
     enum: ["rank", "full"]
   ranks:
