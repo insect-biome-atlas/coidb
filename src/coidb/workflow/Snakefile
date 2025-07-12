@@ -1,10 +1,17 @@
 import polars as pl
+import pandas as pd
 import string
 import gzip as gz
 from tempfile import NamedTemporaryFile
 from snakemake.utils import validate
+import os
+import sys
 
 validate(config, "schemas/config.schema.yaml")
+
+if not config["input_file"]:
+    sys.stderr.write("NO INPUT FILE SPECIFIED! Use --input_file flag to set.\n")
+    sys.exit(1)
 
 from coidb import series_to_fasta
 
@@ -13,6 +20,7 @@ localrules:
     extract_input,
     gzip,
     collect_vsearch,
+    download_backbone
 
 
 rule all:
@@ -26,9 +34,59 @@ rule all:
                 "coidb.dada2.addSpecies.fasta.gz",
                 "coidb.sintax.fasta.gz",
                 "coidb.BOLD_BIN.consensus_taxonomy.tsv.gz",
-                "coidb.info.tsv.gz"
+                "from_backbone.BOLD_BIN.consensus_taxonomy.tsv.gz",
+                "coidb.info.tsv.gz",
+                "timestamps.txt"
             ]
         )
+
+rule download_backbone:
+    message: "Downloading GBIF taxonomy backbone"
+    output:
+        tsv=expand("{output_dir}/_backbone/Taxon.tsv", output_dir=config["output_dir"]),
+        timestamp=temp(expand("{output_dir}/backbone_timestamp.txt", output_dir=config["output_dir"]))
+    log:
+        os.path.join(config["output_dir"], "_logs/download_backbone.log"),
+    params:
+        output_dir = lambda wildcards, output: os.path.dirname(output[0]),
+        url = "https://hosted-datasets.gbif.org/datasets/backbone/current/backbone.zip"
+    shell:
+        """
+        curl -o {params.output_dir}/backbone.zip {params.url} > {log} 2>&1
+        echo "GBIF backbone: " > {output.timestamp}
+        timestamp=$(unzip -p {params.output_dir}/backbone.zip eml.xml | grep dateStamp | cut -f2 -d '>' | cut -f1 -d '<')
+        echo "  - date: $timestamp" >> {output.timestamp}
+        echo "  - url: {params.url}" >> {output.timestamp}
+        unzip -p {params.output_dir}/backbone.zip Taxon.tsv | cut -f1,3,6,8,12,18- > {output.tsv}
+        rm {params.output_dir}/backbone.zip
+        """
+
+rule parse_backbone:
+    message: "Extracting backbone taxonomy for BOLD bins"
+    output:
+        temp(expand("{output_dir}/_gbif-backbone.bold_bin.taxonomy.tsv", output_dir=config["output_dir"]))
+    input:
+        rules.download_backbone.output[0]
+    log:
+        os.path.join(config["output_dir"], "_logs/parse_backbone.log")
+    shell:
+        """
+        parse-backbone {input} {output} 2>{log}
+        """
+
+rule fill_missing_backbone:
+    message: "Filling missing ranks for backbone taxonomy"
+    output:
+        expand("{output_dir}/gbif-backbone.bold_bin.taxonomy.tsv", output_dir=config["output_dir"])
+    input:
+        rules.parse_backbone.output[0]
+    log:
+        os.path.join(config["output_dir"], "_logs/fill_missing_backbone.log")
+    shell:
+        """
+        fill-missing -i {input} -o {output} 2>{log}
+        """
+
 
 rule gzip:
     message: "Compressing {wildcards.f}"
@@ -51,6 +109,7 @@ checkpoint extract_input:
         os.path.join(config["output_dir"], "_logs/extract_input.log"),
     shell:
         """
+        rm -rf {output}
         mkdir -p {output}
         tar -C {output} -xvf {input.tarball} > {log} 2>&1
         """
@@ -76,12 +135,19 @@ rule filter:
         tsv=get_extracted,
     output:
         tsv=os.path.join(config["output_dir"], "_processed/01-data.filtered.tsv"),
+        timestamp=temp(expand("{output_dir}/input_timestamp.txt", output_dir=config["output_dir"]))
     log:
         os.path.join(config["output_dir"], "_logs/filter.log"),
     params:
         min_len=config["min_len"],
+        input_file=config["input_file"]
+    resources:
+        mem_mb = 12000
     shell:
         """
+        echo "Input data:" >> {output.timestamp}
+        echo "  - filename: {params.input_file}" >> {output.timestamp}
+        echo "  - extracted filename: {input.tsv}" >> {output.timestamp}
         filter-records -i {input.tsv} -o {output.tsv} -l {params.min_len} 2>{log}
         """
 
@@ -106,8 +172,10 @@ rule calculate_consensus:
         "Calculating consensus taxonomy for BINs"
     input:
         tsv=rules.fill_missing.output.tsv,
+        backbone=rules.fill_missing_backbone.output[0]
     output:
         tsv=temp(os.path.join(config["output_dir"], "coidb.BOLD_BIN.consensus_taxonomy.tsv")),
+        existing=temp(os.path.join(config["output_dir"], "from_backbone.BOLD_BIN.consensus_taxonomy.tsv"))
     log:
         os.path.join(config["output_dir"], "_logs/calculate_consensus.log"),
     params:
@@ -117,7 +185,7 @@ rule calculate_consensus:
     threads: workflow.cores
     shell:
         """
-        consensus-taxonomy -i {input.tsv} -o {output.tsv} -p {threads} -t {params.threshold} 2>{log}
+        consensus-taxonomy -i {input.tsv} -o {output.tsv} -u {input.backbone} --write_existing {output.existing} -r {params.ranks} -p {threads} -t {params.threshold} 2>{log}
         """
 
 
@@ -266,4 +334,15 @@ rule format_dada2:
         """
         format-fasta --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} dada2 \
             --outfile_toGenus {output.to_genus} --outfile_toSpecies {output.to_species} --outfile_assignSpecies {output.assign_species} 2>{log}
+        """
+
+rule concat_timestamps:
+    output:
+        os.path.join(config["output_dir"], "timestamps.txt")
+    input:
+        rules.download_backbone.output.timestamp,
+        rules.filter.output.timestamp
+    shell:
+        """
+        cat {input} > {output}
         """
