@@ -110,7 +110,7 @@ def calculate_consensus(
         ],
         how="horizontal",
     )
-    return consensus_df
+    return consensus_df.select(["bin_uri"] + ranks)
 
 
 def worker(arg):
@@ -178,6 +178,17 @@ def main():
         required=True,
     )
     parser.add_argument(
+        "-u",
+        "--use_existing",
+        type=str,
+        help="Use existing backbone in file and only update BOLD bins missing",
+    )
+    parser.add_argument(
+        "--write_existing",
+        type=str,
+        help="Write BOLD bins used in --use_existing to a separate file",
+    )
+    parser.add_argument(
         "-t",
         "--threshold",
         type=int,
@@ -208,12 +219,24 @@ def main():
 
     sys.stderr.write(f"Loading data from {args.infile}\n")
     bin_taxonomy, bin_taxonomy_ambig, bin_taxonomy_unambig = load_taxonomy(args.infile)
+    if args.use_existing:
+        sys.stderr.write(f"Using existing taxonomies from {args.use_existing}\n")
+        existing = pl.read_csv(args.use_existing, separator="\t")
+        existing = existing.filter(
+            pl.col("bin_uri").is_in(
+                bin_taxonomy.select("bin_uri").unique().to_series().to_list()
+            )
+        )
+        sys.stderr.write(f"Matched {existing.shape[0]} BINs from {args.use_existing}\n")
+        bin_taxonomy_ambig = bin_taxonomy_ambig.filter(
+            ~pl.col("bin_uri").is_in(existing.select("bin_uri").to_series().to_list())
+        )
     # Partition the ambiguous BOLD BINs into a list of dataframes
     dataframes = bin_taxonomy_ambig.partition_by("bin_uri")
     # Apply the consensus function to each dataframe in the dataframes list
     # Use the worker function to supply the threshold as an argument
     sys.stderr.write(
-        f"Calculating consensus taxonomies for non-unique BINS using {args.cpus} cpus\n"
+        f"Calculating consensus taxonomies for {len(dataframes)} non-unique BINS using {args.cpus} cpus\n"
     )
     with Pool(args.cpus) as p:
         consensus_list = p.map(
@@ -222,6 +245,18 @@ def main():
     sys.stderr.write(f"Concatenating results\n")
     # Concatenate the dataframes in the consensus_list + the unambiguous dataframe
     consensus_df = pl.concat(
-        consensus_list + [bin_taxonomy_unambig.select(args.ranks + ["bin_uri"])]
+        consensus_list + [bin_taxonomy_unambig.select(["bin_uri"] + args.ranks)]
     )
+    # If updating with existing taxonomy, concatenate with BINs in existing for which
+    # a consensus has not been calculated
+    if args.use_existing:
+        if existing.shape[0] > 0:
+            existing = existing.filter(
+                ~pl.col("bin_uri").is_in(
+                    consensus_df.select("bin_uri").unique().to_series().to_list()
+                )
+            )
+            if args.write_existing:
+                existing.write_csv(args.write_existing, separator="\t")
+        consensus_df = pl.concat([existing, consensus_df])
     consensus_df.write_csv(args.outfile, separator="\t")
