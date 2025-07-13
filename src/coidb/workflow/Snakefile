@@ -38,11 +38,15 @@ rule all:
                 "backbone.bold_bin.taxonomy.tsv.gz",
                 "from_backbone.BOLD_BIN.consensus_taxonomy.tsv.gz",
                 "coidb.info.tsv.gz",
+                "coidb.prok.info.tsv.gz",
                 "timestamps.txt"
             ]
         )
 
 rule download_backbone:
+    """
+    This rule downloads the latest GBIF backbone release.
+    """
     message: "Downloading GBIF taxonomy backbone"
     output:
         tsv=expand("{output_dir}/_backbone/Taxon.tsv", output_dir=config["output_dir"]),
@@ -64,9 +68,12 @@ rule download_backbone:
         """
 
 rule parse_backbone:
+    """
+    This rule parses the GBIF backbone for downstream use.
+    """
     message: "Extracting backbone taxonomy for BOLD bins"
     output:
-        temp(expand("{output_dir}/_backbone.bold_bin.taxonomy.tsv", output_dir=config["output_dir"]))
+        temp(expand("{output_dir}/_backbone/bold_bin.taxonomy.tsv", output_dir=config["output_dir"]))
     input:
         rules.download_backbone.output[0]
     log:
@@ -77,6 +84,9 @@ rule parse_backbone:
         """
 
 rule fill_missing_backbone:
+    """
+    This rule fills in missing ranks in the GBIF backbone.
+    """
     message: "Filling missing ranks for backbone taxonomy"
     output:
         expand("{output_dir}/backbone.bold_bin.taxonomy.tsv", output_dir=config["output_dir"])
@@ -102,6 +112,9 @@ rule gzip:
         """
 
 checkpoint extract_input:
+    """
+    This checkpoint extracts the input tarball (if specified).
+    """
     message: "Extracting input file {config[input_file]}"
     input:
         tarball=config["input_file"],
@@ -118,6 +131,10 @@ checkpoint extract_input:
 
 
 def get_extracted(wildcards):
+    """
+    This function identifies the filename of the *.tsv file contained in the
+    input tarball.
+    """
     if config["input_file"].endswith(".tar.gz"):
         checkpoint_output = checkpoints.extract_input.get(**wildcards).output[0]
         tsv = expand(
@@ -131,12 +148,27 @@ def get_extracted(wildcards):
 
 
 rule filter:
+    """
+    This rule filters the input data by:
+    1. Selecting a subset of columns
+    2. Only keeping records matching COI-5P as 'marker_code'
+    3. Only keeping records with an assigned BOLD BIN
+    4. Only keeping records with a sequence length >= min_len (default 500)
+    5. Strips leading and trailing '-' characters
+    6. Removes sequences with with remaining gaps
+    7. Removes sequences with non DNA characters
+
+    For the prokaryotic file the same filtering is applied but records 
+    are only kept if kingdom matches 'Bacteria' or 'Archaea' and no BOLD BIN 
+    is assigned.
+    """
     message:
         "Filter data to only include BOLD BIN records, trim and remove spurious sequences"
     input:
         tsv=get_extracted,
     output:
-        tsv=os.path.join(config["output_dir"], "_processed/01-data.filtered.tsv"),
+        tsv=temp(os.path.join(config["output_dir"], "_processed/data.filtered.tsv")),
+        tsv_prok=temp(os.path.join(config["output_dir"], "_processed/data_prok.filtered.tsv")),
         timestamp=temp(expand("{output_dir}/input_timestamp.txt", output_dir=config["output_dir"]))
     log:
         os.path.join(config["output_dir"], "_logs/filter.log"),
@@ -150,11 +182,16 @@ rule filter:
         echo "Input data:" >> {output.timestamp}
         echo "  - filename: {params.input_file}" >> {output.timestamp}
         echo "  - extracted filename: {input.tsv}" >> {output.timestamp}
-        filter-records -i {input.tsv} -o {output.tsv} -l {params.min_len} 2>{log}
+        filter-records -i {input.tsv} -o {output.tsv} --prok_out {output.tsv_prok} -l {params.min_len} 2>{log}
         """
 
 
 checkpoint fill_missing:
+    """
+    This checkpoint fills in missing ranks for records with BOLD BINs.
+    The output is used to partition the sequences by BOLD BIN for clustering
+    with vsearch.
+    """
     message:
         "Filling missing ranks"
     input:
@@ -168,8 +205,29 @@ checkpoint fill_missing:
         fill-missing -i {input.tsv} -o {output.tsv} 2>{log}
         """
 
+rule fill_missing_prok:
+    """
+    This rule fills in missing ranks for the prokaryotic records.
+    """
+    message:
+        "Filling missing ranks for prokaryotes"
+    input:
+        tsv=rules.filter.output.tsv_prok
+    output:
+        tsv=temp(os.path.join(config["output_dir"], "coidb.prok.info.tsv"))
+    log:
+        os.path.join(config["output_dir"], "_logs/fill_missing_prok.log")
+    shell:
+        """
+        fill-missing -i {input.tsv} -o {output.tsv} 2>{log}
+        """
 
 rule calculate_consensus:
+    """
+    This rule calculates a consensus taxonomy for BOLD BINs. It uses as input
+    both the BOLD data and the GBIF backbone. If BINs are present in the
+    backbone this information takes precedence.
+    """
     message:
         "Calculating consensus taxonomy for BINs"
     input:
@@ -192,6 +250,9 @@ rule calculate_consensus:
 
 
 rule vsearch:
+    """
+    This rule clusters sequences for each BOLD BIN.
+    """
     message:
         "Clustering sequences in {wildcards.bin_uri}"
     input:
@@ -257,12 +318,15 @@ def get_vsearch_fastas(wildcards):
 
 
 rule collect_vsearch:
+    """
+    This rule concatenates all the vsearch clustered fasta files.
+    """
     message:
         "Collect vsearch output"
     input:
         fasta=get_vsearch_fastas,
     output:
-        fasta=temp(os.path.join(config["output_dir"], "_processed/04-data.vsearch_clustered.fasta.gz")),
+        fasta=temp(os.path.join(config["output_dir"], "_processed/vsearch_clustered.fasta.gz")),
     log:
         os.path.join(config["output_dir"], "_logs/collect_vsearch.log"),
     shell:
@@ -272,6 +336,10 @@ rule collect_vsearch:
 
 
 rule add_to_vsearch:
+    """
+    This rule adds sequences from single-record BINs to the vsearch clustered
+    fasta file.
+    """
     message:
         "Adding records to vsearch output"
     input:
@@ -303,6 +371,10 @@ rule add_to_vsearch:
 
 
 rule format_sintax:
+    """
+    This rule formats the vsearch clustered fasta into a SINTAX compatible
+    format.
+    """
     message:
         "Generate SINTAX format fasta file"
     input:
@@ -310,16 +382,37 @@ rule format_sintax:
         tsv=rules.fill_missing.output.tsv,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        fasta=os.path.join(config["output_dir"], "coidb.sintax.fasta.gz"),
+        fasta=temp(os.path.join(config["output_dir"], "_format/coidb.sintax.fasta")),
     log:
         os.path.join(config["output_dir"], "_logs/format_sintax.log"),
     shell:
         """
-        format-fasta --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} sintax --outfile {output} 2>{log}
+        format-fasta --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} sintax --outfile {output.fasta} 2>{log}
         """
 
+rule format_sintax_prok:
+    """
+    This rule formats sequences from prokaryotes into a SINTAX compatible
+    format.
+    """
+    message:
+        "Generating SINTAX format fasta file for prokaryotes"
+    input:
+        tsv=rules.fill_missing_prok.output.tsv
+    output:
+        fasta=temp(os.path.join(config["output_dir"], "_format/coidb.sintax.prok.fasta"))
+    log:
+        os.path.join(config["output_dir"], "_logs/format_sintax_prok.log"),
+    shell:
+        """
+        format-fasta --tsv {input.tsv} sintax --outfile {output.fasta} 2>{log}
+        """
 
 rule format_dada2:
+    """
+    This rule formats sequences from the vsearch clustered fasta into DADA2
+    compatible formats.
+    """
     message:
         "Generate DADA2 format fasta files"
     input:
@@ -327,9 +420,9 @@ rule format_dada2:
         tsv=rules.fill_missing.output.tsv,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        to_genus=os.path.join(config["output_dir"], "coidb.dada2.toGenus.fasta.gz"),
-        to_species=os.path.join(config["output_dir"], "coidb.dada2.toSpecies.fasta.gz"),
-        assign_species=os.path.join(config["output_dir"], "coidb.dada2.addSpecies.fasta.gz"),
+        to_genus=os.path.join(config["output_dir"], "_format/coidb.dada2.toGenus.fasta"),
+        to_species=os.path.join(config["output_dir"], "_format/coidb.dada2.toSpecies.fasta"),
+        assign_species=os.path.join(config["output_dir"], "_format/coidb.dada2.addSpecies.fasta"),
     log:
         os.path.join(config["output_dir"], "_logs/format_dada2.log"),
     shell:
@@ -338,7 +431,76 @@ rule format_dada2:
             --outfile_toGenus {output.to_genus} --outfile_toSpecies {output.to_species} --outfile_assignSpecies {output.assign_species} 2>{log}
         """
 
+rule format_dada2_prok:
+    """
+    This rule formats sequences from prokaryotes into DADA2 compatible
+    formats.
+    """
+    message:
+        "Generate DADA2 format fasta files for prokaryotes"
+    input:
+        fasta=rules.add_to_vsearch.output.fasta,
+        tsv=rules.fill_missing.output.tsv,
+        consensus=rules.calculate_consensus.output.tsv,
+    output:
+        to_genus=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.toGenus.prok.fasta")),
+        to_species=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.toSpecies.prok.fasta")),
+        assign_species=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.addSpecies.prok.fasta")),
+    log:
+        os.path.join(config["output_dir"], "_logs/format_dada2.log"),
+    shell:
+        """
+        format-fasta --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} dada2 \
+            --outfile_toGenus {output.to_genus} --outfile_toSpecies {output.to_species} --outfile_assignSpecies {output.assign_species} 2>{log}
+        """
+
+rule sintax_fasta:
+    """
+    This rule concatenates the vsearch clustered and prokaryotic SINTAX files.
+    """
+    message:
+        "Generating combined SINTAX format fasta"
+    input:
+        fasta=rules.format_sintax.output.fasta,
+        fasta_prok=rules.format_sintax_prok.output.fasta
+    output:
+        os.path.join(config["output_dir"], "coidb.sintax.fasta.gz")
+    log:
+        os.path.join(config["output_dir"], "_logs/sintax_fasta.log")
+    shell:
+        """
+        exec &>{log}
+        cat {input} | gzip -c > {output}
+        """
+
+rule dada2_fasta:
+    """
+    This rule concatenates the vsearch clustered and prokaryotic DADA2 files.
+    """
+    message:
+        "Generating combined DADA2 format fasta files"
+    input:
+        to_genus = [rules.format_dada2.output.to_genus, rules.format_dada2_prok.output.to_genus],
+        to_species = [rules.format_dada2.output.to_species, rules.format_dada2_prok.output.to_species],
+        assign_species = [rules.format_dada2.output.assign_species, rules.format_dada2_prok.output.assign_species],
+    output:
+        to_genus=os.path.join(config["output_dir"], "coidb.dada2.toGenus.fasta.gz"),
+        to_species=os.path.join(config["output_dir"], "coidb.dada2.toSpecies.fasta.gz"),
+        assign_species=os.path.join(config["output_dir"], "coidb.dada2.addSpecies.fasta.gz"),
+    log:
+        os.path.join(config["output_dir"], "_logs/dada2_fasta.log")
+    shell:
+        """
+        exec &>{log}
+        cat {input.to_genus} | gzip -c > {output.to_genus}
+        cat {input.to_species} | gzip -c > {output.to_species}
+        cat {input.assign_species} | gzip -c > {output.assign_species}
+        """
+
 rule concat_timestamps:
+    """
+    This rule combines the timestamp files into a single file.
+    """
     output:
         os.path.join(config["output_dir"], "timestamps.txt")
     input:
