@@ -129,12 +129,12 @@ def main():
         help="TSV file with taxonomic info and sequences",
     )
     parser.add_argument(
-        "--fasta", type=str, required=True, help="Fasta file of sequences"
+        "--fasta", type=str, required=False, help="Fasta file of sequences"
     )
     parser.add_argument(
         "--consensus",
         type=str,
-        required=True,
+        required=False,
         help="TSV file with consensus taxonomy for BOLD BINs",
     )
     subparsers = parser.add_subparsers(dest="format")
@@ -163,19 +163,23 @@ def main():
     )
     args = parser.parse_args()
 
-    records = read_records(args.fasta)
-    # Create a dataframe of only the records from the clustered fasta file
-    # and only keep the processid, bin_uri and seq columns
-    df = (
-        pl.scan_csv(args.tsv, separator="\t")
-        .filter(pl.col("processid").is_in(records))
-        .select(["processid", "bin_uri", "seq"])
-        .collect()
-    )
-    # Read consensus taxonomy for BOLD BINs
-    consensus = pl.read_csv(args.consensus, separator="\t")
-    # Merge dataframe with consensus, adding BOLD BIN taxonomy to records
-    df = consensus.join(df, on="bin_uri")
+    if args.fasta:
+        records = read_records(args.fasta)
+    if args.consensus:
+        # Create a dataframe of only the records from the clustered fasta file
+        # and only keep the processid, bin_uri and seq columns
+        df = (
+            pl.scan_csv(args.tsv, separator="\t")
+            .filter(pl.col("processid").is_in(records))
+            .select(["processid", "bin_uri", "seq"])
+            .collect()
+        )
+        # Read consensus taxonomy for BOLD BINs
+        consensus = pl.read_csv(args.consensus, separator="\t")
+        # Merge dataframe with consensus, adding BOLD BIN taxonomy to records
+        df = consensus.join(df, on="bin_uri")
+    else:
+        df = pl.scan_csv(args.tsv, separator="\t").collect()
     # Write the requested format
     if args.format == "sintax":
         format_sintax(df, args.outfile)
