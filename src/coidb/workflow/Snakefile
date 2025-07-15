@@ -23,6 +23,9 @@ localrules:
     download_backbone,
     concat_timestamps
 
+wildcard_constraints:
+    n = "backbone|coidb|coidb.prok"
+
 
 rule all:
     input:
@@ -35,7 +38,7 @@ rule all:
                 "coidb.dada2.addSpecies.fasta.gz",
                 "coidb.sintax.fasta.gz",
                 "coidb.BOLD_BIN.consensus_taxonomy.tsv.gz",
-                "backbone.bold_bin.taxonomy.tsv.gz",
+                "backbone.info.tsv.gz",
                 "from_backbone.BOLD_BIN.consensus_taxonomy.tsv.gz",
                 "coidb.info.tsv.gz",
                 "coidb.prok.info.tsv.gz",
@@ -49,7 +52,7 @@ rule download_backbone:
     """
     message: "Downloading GBIF taxonomy backbone"
     output:
-        tsv=expand("{output_dir}/_backbone/Taxon.tsv", output_dir=config["output_dir"]),
+        tsv=temp(expand("{output_dir}/_backbone/Taxon.tsv", output_dir=config["output_dir"])),
         timestamp=temp(expand("{output_dir}/backbone_timestamp.txt", output_dir=config["output_dir"]))
     log:
         os.path.join(config["output_dir"], "_logs/download_backbone.log"),
@@ -81,22 +84,6 @@ rule parse_backbone:
     shell:
         """
         parse-backbone {input} {output} 2>{log}
-        """
-
-rule fill_missing_backbone:
-    """
-    This rule fills in missing ranks in the GBIF backbone.
-    """
-    message: "Filling missing ranks for backbone taxonomy"
-    output:
-        expand("{output_dir}/backbone.bold_bin.taxonomy.tsv", output_dir=config["output_dir"])
-    input:
-        rules.parse_backbone.output[0]
-    log:
-        os.path.join(config["output_dir"], "_logs/fill_missing_backbone.log")
-    shell:
-        """
-        fill-missing -i {input} -o {output} 2>{log}
         """
 
 
@@ -185,42 +172,48 @@ rule filter:
         filter-records -i {input.tsv} -o {output.tsv} --prok_out {output.tsv_prok} -l {params.min_len} 2>{log}
         """
 
+def fill_missing_input(wildcards):
+    if wildcards.n == "backbone":
+        return rules.parse_backbone.output[0]
+    elif wildcards.n == "coidb":
+        return rules.filter.output.tsv
+    elif wildcards.n == "coidb.prok":
+        return rules.filter.output.tsv_prok
 
-checkpoint fill_missing:
+rule fill_missing:
     """
-    This checkpoint fills in missing ranks for records with BOLD BINs.
-    The output is used to partition the sequences by BOLD BIN for clustering
-    with vsearch.
+    This rule fills in missing ranks in taxonomic dataframes.
     """
     message:
-        "Filling missing ranks"
+        "Filling missing ranks for file {wildcards.n}.info.tsv"
     input:
-        tsv=rules.filter.output.tsv,
+        fill_missing_input
     output:
-        tsv=temp(os.path.join(config["output_dir"], "coidb.info.tsv")),
+        tsv=temp(expand("{output_dir}/{{n}}.info.tsv", output_dir=config["output_dir"]))
+        #tsv=temp(os.path.join(config["output_dir"], "coidb.info.tsv")),
     log:
-        os.path.join(config["output_dir"], "_logs/fill_missing.log"),
+        os.path.join(config["output_dir"], "_logs/fill_missing.{n}.log"),
     shell:
         """
-        fill-missing -i {input.tsv} -o {output.tsv} 2>{log}
+        fill-missing -i {input} -o {output.tsv} 2>{log}
         """
 
-rule fill_missing_prok:
-    """
-    This rule fills in missing ranks for the prokaryotic records.
-    """
-    message:
-        "Filling missing ranks for prokaryotes"
+checkpoint seqs_df:
     input:
-        tsv=rules.filter.output.tsv_prok
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv")
     output:
-        tsv=temp(os.path.join(config["output_dir"], "coidb.prok.info.tsv"))
-    log:
-        os.path.join(config["output_dir"], "_logs/fill_missing_prok.log")
-    shell:
-        """
-        fill-missing -i {input.tsv} -o {output.tsv} 2>{log}
-        """
+        tsv=temp(os.path.join(config["output_dir"], "_processed/seqs_df.tsv")),
+        #d=directory(os.path.join(config["output_dir"], "_multi_record_bins")),
+        txt=temp(os.path.join(config["output_dir"], "_processed/multi_record_bins.txt"))
+    run:
+        df = (pl.scan_csv(input.tsv, separator="\t", low_memory=True).select(["processid","bin_uri","seq"]))
+        df.sink_csv(output.tsv, separator="\t")
+        q = df.group_by("bin_uri").len().filter(pl.col("len")>1).collect()
+        multi_record_bins = q.select("bin_uri").to_series().to_list()
+        with open(output.txt, 'w') as fhout:
+            fhout.write("\n".join(multi_record_bins))
+            fhout.write("\n")
+
 
 rule calculate_consensus:
     """
@@ -231,8 +224,8 @@ rule calculate_consensus:
     message:
         "Calculating consensus taxonomy for BINs"
     input:
-        tsv=rules.fill_missing.output.tsv,
-        backbone=rules.fill_missing_backbone.output[0]
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
+        backbone=os.path.join(config["output_dir"], "backbone.info.tsv")
     output:
         tsv=temp(os.path.join(config["output_dir"], "coidb.BOLD_BIN.consensus_taxonomy.tsv")),
         existing=temp(os.path.join(config["output_dir"], "from_backbone.BOLD_BIN.consensus_taxonomy.tsv"))
@@ -256,7 +249,7 @@ rule vsearch:
     message:
         "Clustering sequences in {wildcards.bin_uri}"
     input:
-        tsv=rules.fill_missing.output.tsv,
+        tsv=os.path.join(config["output_dir"], "_processed/seqs_df.tsv")
     output:
         fasta=temp(
                 expand(
@@ -292,26 +285,21 @@ rule vsearch:
         shell(
             f"vsearch --cluster_fast {f.name} --id {params.id} --centroids {output.fasta} --notrunclabels --threads {threads} 2>{log}"
         )
+        os.remove(f.name)
 
 
 def get_vsearch_fastas(wildcards):
     """
-    This function reads the dataframe of all records and finds BOLD BINs with
-    more than one record -> multi_record_bins. Sequences in these BOLD BINs will
-    be clustered using vsearch, so a list of input files is generated and
-    returned.
+    This function reads a list of BOLD BINs with more than one record ->
+    multi_record_bins. Sequences in these BOLD BINs will be clustered using
+    vsearch, so a list of input files is generated and returned.
     """
-    # Get the TSV file from the fill_missing checkpoint
-    checkpoint_output = checkpoints.fill_missing.get(**wildcards).output.tsv
-    # Read the dataframe with lazy API and filter to only BOLD BINs with more than one record
-    q = (
-        pl.scan_csv(checkpoint_output, separator="\t")
-        .group_by("bin_uri")
-        .len()
-        .filter(pl.col("len") > 1)
-    ).collect()
-    # multi_record_bins is a list of all BOLD BINs with more than 1 record
-    multi_record_bins = q["bin_uri"].to_list()
+    # Get the txt file containing multi record bins
+    checkpoint_output = checkpoints.seqs_df.get(**wildcards).output.txt
+    # Read all lines from the txt file
+    with open(checkpoint_output, 'r') as fhin:
+        multi_record_bins = fhin.readlines()
+    multi_record_bins = [x.rstrip() for x in multi_record_bins]
     # Return a list of vsearch output files which will be used as targets for the collect_vsearch rule,
     # thus triggering vsearch to run on these BOLD BINs
     return expand("{output_dir}/_vsearch/{bin_uri}.fasta", bin_uri=multi_record_bins, output_dir=config["output_dir"])
@@ -343,7 +331,7 @@ rule add_to_vsearch:
     message:
         "Adding records to vsearch output"
     input:
-        tsv=rules.fill_missing.output.tsv,
+        tsv=os.path.join(config["output_dir"], "_processed/seqs_df.tsv"),
         fasta=rules.collect_vsearch.output.fasta,
     output:
         fasta=os.path.join(config["output_dir"], "coidb.clustered.fasta.gz"),
@@ -368,6 +356,7 @@ rule add_to_vsearch:
         series_to_fasta(fasta_series, f.name)
         # Concatenate single record bins fasta + vsearch clustered fasta
         shell("cat {f.name} {input.fasta} | gzip -c > {output.fasta}")
+        os.remove(f.name)
 
 
 rule format_sintax:
@@ -379,7 +368,7 @@ rule format_sintax:
         "Generate SINTAX format fasta file"
     input:
         fasta=rules.add_to_vsearch.output.fasta,
-        tsv=rules.fill_missing.output.tsv,
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
         consensus=rules.calculate_consensus.output.tsv,
     output:
         fasta=temp(os.path.join(config["output_dir"], "_format/coidb.sintax.fasta")),
@@ -398,7 +387,7 @@ rule format_sintax_prok:
     message:
         "Generating SINTAX format fasta file for prokaryotes"
     input:
-        tsv=rules.fill_missing_prok.output.tsv
+        tsv=os.path.join(config["output_dir"], "coidb.prok.info.tsv")
     output:
         fasta=temp(os.path.join(config["output_dir"], "_format/coidb.sintax.prok.fasta"))
     log:
@@ -416,13 +405,13 @@ rule format_dada2:
     message:
         "Generate DADA2 format fasta files"
     input:
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
         fasta=rules.add_to_vsearch.output.fasta,
-        tsv=rules.fill_missing.output.tsv,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        to_genus=os.path.join(config["output_dir"], "_format/coidb.dada2.toGenus.fasta"),
-        to_species=os.path.join(config["output_dir"], "_format/coidb.dada2.toSpecies.fasta"),
-        assign_species=os.path.join(config["output_dir"], "_format/coidb.dada2.addSpecies.fasta"),
+        to_genus=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.toGenus.fasta")),
+        to_species=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.toSpecies.fasta")),
+        assign_species=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.addSpecies.fasta")),
     log:
         os.path.join(config["output_dir"], "_logs/format_dada2.log"),
     shell:
@@ -439,9 +428,7 @@ rule format_dada2_prok:
     message:
         "Generate DADA2 format fasta files for prokaryotes"
     input:
-        fasta=rules.add_to_vsearch.output.fasta,
-        tsv=rules.fill_missing.output.tsv,
-        consensus=rules.calculate_consensus.output.tsv,
+        tsv=os.path.join(config["output_dir"], "coidb.prok.info.tsv")
     output:
         to_genus=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.toGenus.prok.fasta")),
         to_species=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.toSpecies.prok.fasta")),
@@ -450,8 +437,8 @@ rule format_dada2_prok:
         os.path.join(config["output_dir"], "_logs/format_dada2.log"),
     shell:
         """
-        format-fasta --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} dada2 \
-            --outfile_toGenus {output.to_genus} --outfile_toSpecies {output.to_species} --outfile_assignSpecies {output.assign_species} 2>{log}
+        format-fasta --tsv {input.tsv} dada2 --outfile_toGenus {output.to_genus} \
+            --outfile_toSpecies {output.to_species} --outfile_assignSpecies {output.assign_species} 2>{log}
         """
 
 rule sintax_fasta:
