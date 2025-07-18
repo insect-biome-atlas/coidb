@@ -1,9 +1,8 @@
 default-resources: 
   slurm_account: <your-slurm-account>
   slurm_partition: shared
-  runtime: 240
-  cpus_per_task: 1
-  mem_mb: 888
+  runtime: 60
+  mem_mb: 1776
 
 
 set-resources:
@@ -15,9 +14,14 @@ set-resources:
     mem_mb: 17760
   add_to_vsearch:
     mem_mb: 3552
+  vsearch:
+    runtime: 30
+  parse_backbone:
+    mem_mb: 3552
 
 set-threads:
   calculate_consensus: 10
+  vsearch: 2
 
 printshellcmds: False
 local-cores: 1

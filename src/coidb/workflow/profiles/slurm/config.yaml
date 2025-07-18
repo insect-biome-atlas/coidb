@@ -1,16 +1,23 @@
 default-resources: 
   slurm_account: <your-slurm-account>
   slurm_partition: <your-slurm-partition>
-  runtime: 240
-  cpus_per_task: 1
-  mem_mb: 6000
+  runtime: 30
+  mem_mb: 2000
 
 
 set-resources:
+  filter:
+    mem_mb: 4000
+  fill_missing:
+    mem_mb: 4000
   calculate_consensus:
-    mem_mb: 60000
+    mem_mb: 20000
   add_to_vsearch:
-    mem_mb: 3552
+    mem_mb: 4000
+  vsearch:
+    runtime: 30
+  parse_backbone:
+    mem_mb: 4000
 
 set-threads:
   calculate_consensus: 10

@@ -21,6 +21,8 @@ localrules:
     gzip,
     collect_vsearch,
     download_backbone,
+    sintax_fasta,
+    dada2_fasta,
     concat_timestamps
 
 wildcard_constraints:
@@ -298,8 +300,8 @@ rule vsearch:
     group:
         "vsearch"
     resources:
-        runtime=20,
-        mem_mb=1000
+        runtime=30,
+        mem_mb=2000
     run:
         # Create a temporary file to hold the sequences for vsearch
         f = NamedTemporaryFile(mode="w", delete=False)
