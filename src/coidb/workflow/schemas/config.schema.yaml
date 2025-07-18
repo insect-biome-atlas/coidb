@@ -7,6 +7,10 @@ properties:
     type: string
     description: "Output directory"
     default: "results"
+  temp_dir:
+    type: string
+    description: "Temporary directory"
+    default: "results/tmp"
   min_len:
     type: integer
     default: 500

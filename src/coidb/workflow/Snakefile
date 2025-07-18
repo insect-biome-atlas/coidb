@@ -13,6 +13,9 @@ if not config["input_file"]:
     sys.stderr.write("NO INPUT FILE SPECIFIED! Use --input_file flag to set.\n")
     sys.exit(1)
 
+if not config["temp_dir"]:
+    config["temp_dir"] = os.path.join(config["output_dir"], "tmp")
+
 from coidb import series_to_fasta
 
 
@@ -54,7 +57,7 @@ rule download_backbone:
     """
     message: "Downloading GBIF taxonomy backbone"
     output:
-        tsv=temp(expand("{output_dir}/_backbone/Taxon.tsv", output_dir=config["output_dir"])),
+        tsv=temp(expand("{tempdir}/_backbone/Taxon.tsv", tempdir=config["temp_dir"])),
         timestamp=temp(expand("{output_dir}/backbone_timestamp.txt", output_dir=config["output_dir"]))
     log:
         os.path.join(config["output_dir"], "_logs/download_backbone.log"),
@@ -78,7 +81,7 @@ rule parse_backbone:
     """
     message: "Extracting backbone taxonomy for BOLD bins"
     output:
-        temp(expand("{output_dir}/_backbone/bold_bin.taxonomy.tsv", output_dir=config["output_dir"]))
+        temp(expand("{tempdir}/_backbone/bold_bin.taxonomy.tsv", tempdir=config["temp_dir"]))
     input:
         rules.download_backbone.output[0]
     log:
@@ -108,7 +111,7 @@ checkpoint extract_input:
     input:
         tarball=config["input_file"],
     output:
-        directory(os.path.join(config["output_dir"],"_extract")),
+        directory(os.path.join(config["temp_dir"],"_extract")),
     log:
         os.path.join(config["output_dir"], "_logs/extract_input.log"),
     shell:
@@ -156,8 +159,8 @@ rule filter:
     input:
         tsv=get_extracted,
     output:
-        tsv=temp(os.path.join(config["output_dir"], "_processed/data.filtered.tsv")),
-        tsv_prok=temp(os.path.join(config["output_dir"], "_processed/data_prok.filtered.tsv")),
+        tsv=temp(os.path.join(config["temp_dir"], "_processed/data.filtered.tsv")),
+        tsv_prok=temp(os.path.join(config["temp_dir"], "_processed/data_prok.filtered.tsv")),
         timestamp=temp(expand("{output_dir}/input_timestamp.txt", output_dir=config["output_dir"]))
     log:
         os.path.join(config["output_dir"], "_logs/filter.log"),
@@ -217,9 +220,9 @@ checkpoint multi_record_bins:
     input:
         tsv=os.path.join(config["output_dir"], "coidb.info.tsv")
     output:
-        fasta=temp(os.path.join(config["output_dir"], "_processed/multi_record_bins.fasta")),
-        fai=temp(os.path.join(config["output_dir"], "_processed/multi_record_bins.fasta.fai")),
-        tsv=temp(os.path.join(config["output_dir"], "_processed/multi_record_bins.tsv"))
+        fasta=temp(os.path.join(config["temp_dir"], "_processed/multi_record_bins.fasta")),
+        fai=temp(os.path.join(config["temp_dir"], "_processed/multi_record_bins.fasta.fai")),
+        tsv=temp(os.path.join(config["temp_dir"], "_processed/multi_record_bins.tsv"))
     log:
         os.path.join(config["output_dir"], "_logs/multi_record_bins.log"),
     run:
@@ -280,19 +283,19 @@ rule vsearch:
     message:
         "Clustering sequences in {wildcards.bin_uri}"
     input:
-        fasta=os.path.join(config["output_dir"], "_processed/multi_record_bins.fasta"),
-        fai=os.path.join(config["output_dir"], "_processed/multi_record_bins.fasta.fai"),
+        fasta=os.path.join(config["temp_dir"], "_processed/multi_record_bins.fasta"),
+        fai=os.path.join(config["temp_dir"], "_processed/multi_record_bins.fasta.fai"),
     output:
         fasta=temp(
                 expand(
-                    "{output_dir}/_vsearch/{{bin_uri}}.fasta",
-                    output_dir=config["output_dir"]
+                    "{tempdir}/_vsearch/{{bin_uri}}.fasta",
+                    tempdir=config["temp_dir"]
                 )
             ),
     log:
         expand(
-            "{output_dir}/_logs/vsearch_logs/{{bin_uri}}.log",
-            output_dir=config["output_dir"]
+            "{tempdir}/_logs/vsearch_logs/{{bin_uri}}.log",
+            tempdir=config["temp_dir"]
         )
     threads: 1
     params:
@@ -329,7 +332,7 @@ def get_vsearch_fastas(wildcards):
     multi_record_bins = df.select("bin_uri").to_series().to_list()
     # Return a list of vsearch output files which will be used as targets for the collect_vsearch rule,
     # thus triggering vsearch to run on these BOLD BINs
-    return expand("{output_dir}/_vsearch/{bin_uri}.fasta", bin_uri=multi_record_bins, output_dir=config["output_dir"])
+    return expand("{tempdir}/_vsearch/{bin_uri}.fasta", bin_uri=multi_record_bins, tempdir=config["temp_dir"])
 
 
 rule collect_vsearch:
@@ -341,7 +344,7 @@ rule collect_vsearch:
     input:
         fasta=get_vsearch_fastas,
     output:
-        fasta=temp(os.path.join(config["output_dir"], "_processed/vsearch_clustered.fasta.gz")),
+        fasta=temp(os.path.join(config["temp_dir"], "_processed/vsearch_clustered.fasta.gz")),
     log:
         os.path.join(config["output_dir"], "_logs/collect_vsearch.log"),
     shell:
@@ -397,7 +400,7 @@ rule format_sintax:
         tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        fasta=temp(os.path.join(config["output_dir"], "_format/coidb.sintax.fasta")),
+        fasta=temp(os.path.join(config["temp_dir"], "_format/coidb.sintax.fasta")),
     log:
         os.path.join(config["output_dir"], "_logs/format_sintax.log"),
     shell:
@@ -415,7 +418,7 @@ rule format_sintax_prok:
     input:
         tsv=os.path.join(config["output_dir"], "coidb.prok.info.tsv")
     output:
-        fasta=temp(os.path.join(config["output_dir"], "_format/coidb.sintax.prok.fasta"))
+        fasta=temp(os.path.join(config["temp_dir"], "_format/coidb.sintax.prok.fasta"))
     log:
         os.path.join(config["output_dir"], "_logs/format_sintax_prok.log"),
     shell:
@@ -435,9 +438,9 @@ rule format_dada2:
         fasta=rules.add_to_vsearch.output.fasta,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        to_genus=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.toGenus.fasta")),
-        to_species=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.toSpecies.fasta")),
-        assign_species=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.addSpecies.fasta")),
+        to_genus=temp(os.path.join(config["temp_dir"], "_format/coidb.dada2.toGenus.fasta")),
+        to_species=temp(os.path.join(config["temp_dir"], "_format/coidb.dada2.toSpecies.fasta")),
+        assign_species=temp(os.path.join(config["temp_dir"], "_format/coidb.dada2.addSpecies.fasta")),
     log:
         os.path.join(config["output_dir"], "_logs/format_dada2.log"),
     shell:
@@ -456,9 +459,9 @@ rule format_dada2_prok:
     input:
         tsv=os.path.join(config["output_dir"], "coidb.prok.info.tsv")
     output:
-        to_genus=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.toGenus.prok.fasta")),
-        to_species=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.toSpecies.prok.fasta")),
-        assign_species=temp(os.path.join(config["output_dir"], "_format/coidb.dada2.addSpecies.prok.fasta")),
+        to_genus=temp(os.path.join(config["temp_dir"], "_format/coidb.dada2.toGenus.prok.fasta")),
+        to_species=temp(os.path.join(config["temp_dir"], "_format/coidb.dada2.toSpecies.prok.fasta")),
+        assign_species=temp(os.path.join(config["temp_dir"], "_format/coidb.dada2.addSpecies.prok.fasta")),
     log:
         os.path.join(config["output_dir"], "_logs/format_dada2.log"),
     shell:
