@@ -165,6 +165,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/noarch/reretry-0.11.8-pyhd8ed1ab_1.conda
       - conda: https://prefix.dev/conda-forge/noarch/rich-14.0.0-pyh29332c3_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/rpds-py-0.25.1-py312h680f630_0.conda
+      - conda: https://conda.anaconda.org/bioconda/linux-64/seqkit-2.10.0-h9ee0642_0.tar.bz2
       - conda: https://prefix.dev/conda-forge/noarch/shellingham-1.5.4-pyhd8ed1ab_1.conda
       - conda: https://prefix.dev/conda-forge/noarch/six-1.17.0-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/slack-sdk-3.35.0-pyhd8ed1ab_0.conda
@@ -363,6 +364,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/noarch/reretry-0.11.8-pyhd8ed1ab_1.conda
       - conda: https://prefix.dev/conda-forge/noarch/rich-14.0.0-pyh29332c3_0.conda
       - conda: https://prefix.dev/conda-forge/osx-64/rpds-py-0.25.1-py312haba3716_0.conda
+      - conda: https://conda.anaconda.org/bioconda/osx-64/seqkit-2.10.0-h527b516_0.tar.bz2
       - conda: https://prefix.dev/conda-forge/noarch/shellingham-1.5.4-pyhd8ed1ab_1.conda
       - conda: https://prefix.dev/conda-forge/noarch/six-1.17.0-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/slack-sdk-3.35.0-pyhd8ed1ab_0.conda
@@ -544,6 +546,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/noarch/reretry-0.11.8-pyhd8ed1ab_1.conda
       - conda: https://prefix.dev/conda-forge/noarch/rich-14.0.0-pyh29332c3_0.conda
       - conda: https://prefix.dev/conda-forge/osx-arm64/rpds-py-0.25.1-py312hd3c0895_0.conda
+      - conda: https://conda.anaconda.org/bioconda/osx-arm64/seqkit-2.10.0-h4f1019d_0.tar.bz2
       - conda: https://prefix.dev/conda-forge/noarch/shellingham-1.5.4-pyhd8ed1ab_1.conda
       - conda: https://prefix.dev/conda-forge/noarch/six-1.17.0-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/slack-sdk-3.35.0-pyhd8ed1ab_0.conda
@@ -969,10 +972,11 @@ packages:
   - python
   - vsearch
   - polars
+  - seqkit
   - snakemake-executor-plugin-slurm
   - python
   input:
-    hash: 8e000f8224229966dac518e6dc6dd52029452a25cc0d70a38fcbe795bb8433b6
+    hash: 8b201b054e81f26bd7a2a7f1a4894b2b5de734ae4593133ea86d54c6fea6ce6d
     globs:
     - pixi.toml
 - conda: https://prefix.dev/conda-forge/linux-64/coin-or-cbc-2.10.12-h00e76a6_2.conda
@@ -4413,6 +4417,24 @@ packages:
   license_family: MIT
   size: 360032
   timestamp: 1747837743255
+- conda: https://conda.anaconda.org/bioconda/linux-64/seqkit-2.10.0-h9ee0642_0.tar.bz2
+  sha256: 878012ec7adf52a41c48b7e08c35f1b0b2b43de8012f3530ffc52b106ab02b53
+  md5: 81a69f6cb9d20aa9391af6263a3f5f91
+  license: MIT
+  size: 7760865
+  timestamp: 1741772543573
+- conda: https://conda.anaconda.org/bioconda/osx-64/seqkit-2.10.0-h527b516_0.tar.bz2
+  sha256: f720554d6d1818bf5b6766594a43c80f9047dec0a11bacd01995f3e957e017fb
+  md5: 3ed3990d7af2b0fdd64d0738cdf90e41
+  license: MIT
+  size: 7900835
+  timestamp: 1741772864716
+- conda: https://conda.anaconda.org/bioconda/osx-arm64/seqkit-2.10.0-h4f1019d_0.tar.bz2
+  sha256: ea0866f9eccf976453f29a05b2d7f3228e8fa326427dcb8f76fb70790f976845
+  md5: 5e7c978a2e8ed0d3f338168d0458b95a
+  license: MIT
+  size: 7520507
+  timestamp: 1741772645645
 - conda: https://prefix.dev/conda-forge/noarch/shellingham-1.5.4-pyhd8ed1ab_1.conda
   sha256: 0557c090913aa63cdbe821dbdfa038a321b488e22bc80196c4b3b1aace4914ef
   md5: 7c3c2a0f3ebdea2bbc35538d162b43bf

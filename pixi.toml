@@ -28,6 +28,7 @@ snakemake = ">=9"
 python = "*"
 vsearch = "*"
 polars = "*"
+seqkit = "*"
 snakemake-executor-plugin-slurm = "*"
 
 [tasks]
