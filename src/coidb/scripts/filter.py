@@ -145,6 +145,9 @@ def filter_tsv(infile, outfile, min_len=0):
                 "seq",
             ]
         )
+        .
+        # drop duplicate processids
+        unique(subset="processid")
     ).sink_csv(outfile, separator="\t")
 
 
