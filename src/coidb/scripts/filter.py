@@ -8,77 +8,6 @@ import os
 from coidb import get_header, extract_columns
 
 
-def filter_prok(infile, outfile, min_len=0):
-    letters = set(list(string.ascii_uppercase) + ["-"])
-    DNA = set(["A", "C", "T", "G"])
-    non_DNA = list(letters.difference(DNA))
-    tsv = pl.scan_csv(
-        infile,
-        has_header=True,
-        separator="\t",
-        schema_overrides={"nuc_basecount": int},
-        ignore_errors=True,
-        low_memory=True,
-    )
-    select1 = (
-        tsv.
-        # select columns
-        select(
-            [
-                "processid",
-                "bin_uri",
-                "kingdom",
-                "phylum",
-                "class",
-                "order",
-                "family",
-                "genus",
-                "species",
-                "nuc",
-                "nuc_basecount",
-                "marker_code",
-            ]
-        )
-    )
-    filter1 = select1.filter(
-        (pl.col("kingdom").is_in(["Bacteria", "Archaea"]))
-        & (pl.col("marker_code") == "COI-5P")
-        & (~pl.col("bin_uri").str.contains("BOLD:[A-Z0-9]+"))
-        & (pl.col("nuc_basecount") >= min_len)
-    )
-    select2 = (
-        filter1.
-        # translate seq to uppercase
-        with_columns(seq=pl.col("nuc").str.to_uppercase())
-        .
-        # remove left gap characters
-        with_columns(seq=pl.col("seq").str.strip_chars_start("-"))
-        .
-        # remove right gap characters
-        with_columns(seq=pl.col("seq").str.strip_chars_end("-"))
-        .
-        # remove remaining seqs with non DNA characters
-        filter(~pl.col("seq").str.contains_any(non_DNA))
-        .
-        # select and order columns
-        select(
-            [
-                "processid",
-                "kingdom",
-                "phylum",
-                "class",
-                "order",
-                "family",
-                "genus",
-                "species",
-                "bin_uri",
-                "seq",
-            ]
-        )
-    )
-    select2.with_columns(bin_uri=pl.col("processid")).sink_csv(outfile, separator="\t")
-
-
 def filter_tsv(infile, outfile, min_len=0):
     letters = set(list(string.ascii_uppercase) + ["-"])
     DNA = set(["A", "C", "T", "G"])
@@ -91,10 +20,9 @@ def filter_tsv(infile, outfile, min_len=0):
         ignore_errors=True,
         low_memory=True,
     )
-    (
-        tsv.
-        # select columns
-        select(
+    # select columns
+    select_cols = (
+        tsv.select(
             [
                 "processid",
                 "bin_uri",
@@ -110,46 +38,56 @@ def filter_tsv(infile, outfile, min_len=0):
                 "marker_code",
             ]
         )
-        .
-        # filter by gene type, and sequence length and only keep BOLD BINs
-        filter(
+    )
+    # filter rows by marker_code, length and BOLD BIN assignment
+    # records assigned to Bacteria or Archaea are kept even if they do not
+    # have a proper BIN assigned
+    filter_rows = (
+        select_cols.filter(
             (pl.col("marker_code") == "COI-5P")
-            & (pl.col("bin_uri").str.contains("BOLD:[A-Z0-9]+"))
             & (pl.col("nuc_basecount") >= min_len)
+            & (
+                (pl.col("bin_uri").str.contains("BOLD:[A-Z0-9]+")) 
+                | ((pl.col("bin_uri") == "None") & (pl.col("kingdom").is_in(["Bacteria","Archaea"])))
+            )
         )
-        .
+    )
+    transform_seq = (
         # translate seq to uppercase
-        with_columns(seq=pl.col("nuc").str.to_uppercase())
-        .
+        filter_rows.with_columns(seq=pl.col("nuc").str.to_uppercase())
         # remove left gap characters
-        with_columns(seq=pl.col("seq").str.strip_chars_start("-"))
-        .
+        .with_columns(seq=pl.col("seq").str.strip_chars_start("-"))
         # remove right gap characters
-        with_columns(seq=pl.col("seq").str.strip_chars_end("-"))
-        .
+        .with_columns(seq=pl.col("seq").str.strip_chars_end("-"))
+    )
+    filter_seqs = (
         # remove remaining seqs with non DNA characters
-        filter(~pl.col("seq").str.contains_any(non_DNA))
-        .
-        # select and order columns
-        select(
-            [
-                "processid",
-                "kingdom",
-                "phylum",
-                "class",
-                "order",
-                "family",
-                "genus",
-                "species",
-                "bin_uri",
-                "seq",
-            ]
-        )
-        .
+        transform_seq.filter(~pl.col("seq").str.contains_any(non_DNA))
+    )
+    get_unique = (
         # drop duplicate processids
-        unique(subset="processid")
+        filter_seqs.unique(subset="processid")
+    )
+    order_cols = (
+            # select and order columns
+            get_unique.select(
+                [
+                    "processid",
+                    "kingdom",
+                    "phylum",
+                    "class",
+                    "order",
+                    "family",
+                    "genus",
+                    "species",
+                    "bin_uri",
+                    "seq",
+                ]
+            )
+        )
+    order_cols.with_columns(
+        bin_uri=pl.when(pl.col("bin_uri")=="None").then("processid").otherwise("bin_uri")
     ).sink_csv(outfile, separator="\t")
-
 
 def main():
     parser = ArgumentParser()
@@ -158,9 +96,6 @@ def main():
     )
     parser.add_argument(
         "-o", "--outfile", type=str, help="Output TSV file", required=True
-    )
-    parser.add_argument(
-        "--prok_out", type=str, help="Output TSV file with prokaryotic records"
     )
     parser.add_argument(
         "-l",
@@ -203,8 +138,6 @@ def main():
         )
     sys.stderr.write(f"Reading from {infile}\n")
     filter_tsv(infile, args.outfile, args.min_len)
-    if args.prok_out:
-        filter_prok(infile, args.prok_out, args.min_len)
     if infile != args.infile:
         sys.stderr.write(f"Removing {infile}\n")
         os.remove(infile)
