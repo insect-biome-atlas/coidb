@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from multiprocessing import get_context
 from multiprocessing import Pool
 import polars as pl
 import sys
@@ -145,13 +146,13 @@ def load_taxonomy(infile):
         .len("n")
         .sort(["bin_uri", "n"], descending=True)
     ).collect()
-    sys.stderr.write(f"Read {bin_taxonomy["bin_uri"].n_unique()} BOLD BINs\n")
+    sys.stderr.write(f"Read {bin_taxonomy["bin_uri"].n_unique()} BOLD BINs.\n")
     # Create a dataframe for BOLD BINs with more than 1 unique lineage
     bin_taxonomy_ambig = bin_taxonomy.join(
         bin_taxonomy.group_by("bin_uri").len("bin_rows"), on="bin_uri"
     ).filter(pl.col("bin_rows") > 1)
     sys.stderr.write(
-        f"Found {bin_taxonomy_ambig["bin_uri"].n_unique()} BOLD BINs with non-unique lineages\n"
+        f"Found {bin_taxonomy_ambig["bin_uri"].n_unique()} BOLD BINs with non-unique lineages.\n"
     )
     # Create a dataframe for BOLD BINs with only 1 lineage
     bin_taxonomy_unambig = (
@@ -162,7 +163,7 @@ def load_taxonomy(infile):
         .drop(["n", "bin_rows"])
     )
     sys.stderr.write(
-        f"Found {bin_taxonomy_unambig["bin_uri"].n_unique()} BOLD BINs with unique lineages\n"
+        f"Found {bin_taxonomy_unambig["bin_uri"].n_unique()} BOLD BINs with unique lineages.\n"
     )
     return bin_taxonomy, bin_taxonomy_ambig, bin_taxonomy_unambig
 
@@ -217,32 +218,38 @@ def main():
     )
     args = parser.parse_args()
 
-    sys.stderr.write(f"Loading data from {args.infile}\n")
+    sys.stderr.write(f"Loading data from {args.infile}.\n")
     bin_taxonomy, bin_taxonomy_ambig, bin_taxonomy_unambig = load_taxonomy(args.infile)
     if args.use_existing:
-        sys.stderr.write(f"Using existing taxonomies from {args.use_existing}\n")
+        sys.stderr.write(f"Using existing taxonomies from {args.use_existing}.\n")
         existing = pl.read_csv(args.use_existing, separator="\t")
         existing = existing.filter(
             pl.col("bin_uri").is_in(
                 bin_taxonomy.select("bin_uri").unique().to_series().to_list()
             )
         )
-        sys.stderr.write(f"Matched {existing.shape[0]} BINs from {args.use_existing}\n")
+        sys.stderr.write(f"Matched {existing.shape[0]} BINs from {args.use_existing}.\n")
         bin_taxonomy_ambig = bin_taxonomy_ambig.filter(
             ~pl.col("bin_uri").is_in(existing.select("bin_uri").to_series().to_list())
         )
     # Partition the ambiguous BOLD BINs into a list of dataframes
     dataframes = bin_taxonomy_ambig.partition_by("bin_uri")
+    # Set cap on cpus 
+    cpus = min(len(dataframes), args.cpus)
+    if cpus < args.cpus:
+        sys.stderr.write(
+            f"Number of non-unique BINS ({len(dataframes)}) < provided cpus. Setting cpus to {cpus}.\n"
+        )
+    sys.stderr.write(
+        f"Calculating consensus taxonomies for {len(dataframes)} non-unique BINS using {cpus} cpus.\n"
+    )
     # Apply the consensus function to each dataframe in the dataframes list
     # Use the worker function to supply the threshold as an argument
-    sys.stderr.write(
-        f"Calculating consensus taxonomies for {len(dataframes)} non-unique BINS using {args.cpus} cpus\n"
-    )
-    with Pool(args.cpus) as p:
+    with get_context("spawn").Pool(cpus) as p:
         consensus_list = p.map(
             worker, ((df, args.ranks, args.threshold, args.method) for df in dataframes)
         )
-    sys.stderr.write(f"Concatenating results\n")
+    sys.stderr.write(f"Concatenating results.\n")
     # Concatenate the dataframes in the consensus_list + the unambiguous dataframe
     consensus_df = pl.concat(
         consensus_list + [bin_taxonomy_unambig.select(["bin_uri"] + args.ranks)]
