@@ -32,10 +32,16 @@ def extract_columns(f, indices):
     temporary file.
     """
     fout = NamedTemporaryFile(mode="w", delete=False)
+    records = {}
     with open(f, "r") as fhin:
         for line in fhin:
             line = line.rstrip()
             items = line.split("\t")
+            try:
+                records[items[0]]
+                continue
+            except KeyError:
+                records[items[0]] = 1
             kept_items = []
             for i in indices:
                 try:

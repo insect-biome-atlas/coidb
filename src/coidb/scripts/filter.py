@@ -6,6 +6,7 @@ import string
 import sys
 import os
 from coidb import get_header, extract_columns
+import time
 
 
 def filter_tsv(infile, outfile, min_len=0):
@@ -21,34 +22,33 @@ def filter_tsv(infile, outfile, min_len=0):
         low_memory=True,
     )
     # select columns
-    select_cols = (
-        tsv.select(
-            [
-                "processid",
-                "bin_uri",
-                "kingdom",
-                "phylum",
-                "class",
-                "order",
-                "family",
-                "genus",
-                "species",
-                "nuc",
-                "nuc_basecount",
-                "marker_code",
-            ]
-        )
+    select_cols = tsv.select(
+        [
+            "processid",
+            "bin_uri",
+            "kingdom",
+            "phylum",
+            "class",
+            "order",
+            "family",
+            "genus",
+            "species",
+            "nuc",
+            "nuc_basecount",
+            "marker_code",
+        ]
     )
     # filter rows by marker_code, length and BOLD BIN assignment
     # records assigned to Bacteria or Archaea are kept even if they do not
     # have a proper BIN assigned
-    filter_rows = (
-        select_cols.filter(
-            (pl.col("marker_code") == "COI-5P")
-            & (pl.col("nuc_basecount") >= min_len)
-            & (
-                (pl.col("bin_uri").str.contains("BOLD:[A-Z0-9]+")) 
-                | ((pl.col("bin_uri") == "None") & (pl.col("kingdom").is_in(["Bacteria","Archaea"])))
+    filter_rows = select_cols.filter(
+        (pl.col("marker_code") == "COI-5P")
+        & (pl.col("nuc_basecount") >= min_len)
+        & (
+            (pl.col("bin_uri").str.contains("BOLD:[A-Z0-9]+"))
+            | (
+                (pl.col("bin_uri") == "None")
+                & (pl.col("kingdom").is_in(["Bacteria", "Archaea"]))
             )
         )
     )
@@ -64,30 +64,29 @@ def filter_tsv(infile, outfile, min_len=0):
         # remove remaining seqs with non DNA characters
         transform_seq.filter(~pl.col("seq").str.contains_any(non_DNA))
     )
-    get_unique = (
-        # drop duplicate processids
-        filter_seqs.unique(subset="processid")
-    )
     order_cols = (
-            # select and order columns
-            get_unique.select(
-                [
-                    "processid",
-                    "kingdom",
-                    "phylum",
-                    "class",
-                    "order",
-                    "family",
-                    "genus",
-                    "species",
-                    "bin_uri",
-                    "seq",
-                ]
-            )
+        # select and order columns
+        filter_seqs.select(
+            [
+                "processid",
+                "kingdom",
+                "phylum",
+                "class",
+                "order",
+                "family",
+                "genus",
+                "species",
+                "bin_uri",
+                "seq",
+            ]
         )
+    )
     order_cols.with_columns(
-        bin_uri=pl.when(pl.col("bin_uri")=="None").then("processid").otherwise("bin_uri")
+        bin_uri=pl.when(pl.col("bin_uri") == "None")
+        .then("processid")
+        .otherwise("bin_uri")
     ).sink_csv(outfile, separator="\t")
+
 
 def main():
     parser = ArgumentParser()
@@ -131,13 +130,15 @@ def main():
             sys.exit(
                 f"Not all required columns found in {args.infile}. Missing columns: {missing_cols}"
             )
-        indices = [header.index(x) for x in proper_header]
-        infile = extract_columns(args.infile, indices)
-        sys.stderr.write(
-            f"Wrote columns {','.join([str(x) for x in indices])} from {args.infile} to {infile}\n"
-        )
-    sys.stderr.write(f"Reading from {infile}\n")
-    filter_tsv(infile, args.outfile, args.min_len)
-    if infile != args.infile:
-        sys.stderr.write(f"Removing {infile}\n")
-        os.remove(infile)
+    indices = [header.index(x) for x in proper_header]
+    sys.stderr.write(f"Prefiltering {args.infile}\n")
+    prefilter_start = time.time()
+    tempfile = extract_columns(args.infile, indices)
+    prefilter_time = round(time.time() - prefilter_start)
+    sys.stderr.write(
+        f"Wrote columns {','.join([str(x) for x in indices])} from {args.infile} to temporary file {tempfile} in {prefilter_time} s\n"
+    )
+    sys.stderr.write(f"Running filter on {tempfile} and writing to {args.outfile}\n")
+    filter_tsv(tempfile, args.outfile, args.min_len)
+    sys.stderr.write(f"Removing {tempfile}\n")
+    os.remove(tempfile)
