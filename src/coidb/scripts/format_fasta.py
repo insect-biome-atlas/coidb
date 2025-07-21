@@ -162,7 +162,6 @@ def main():
         help="Output file for assignSpecies",
     )
     args = parser.parse_args()
-
     if args.fasta:
         records = read_records(args.fasta)
     if args.consensus:
@@ -172,14 +171,13 @@ def main():
             pl.scan_csv(args.tsv, separator="\t")
             .filter(pl.col("processid").is_in(records))
             .select(["processid", "bin_uri", "seq"])
-            .collect()
-        )
+        ).collect(engine="streaming")
         # Read consensus taxonomy for BOLD BINs
         consensus = pl.read_csv(args.consensus, separator="\t")
         # Merge dataframe with consensus, adding BOLD BIN taxonomy to records
         df = consensus.join(df, on="bin_uri")
     else:
-        df = pl.scan_csv(args.tsv, separator="\t").collect()
+        df = pl.scan_csv(args.tsv, separator="\t").collect(engine="streaming")
     # Write the requested format
     if args.format == "sintax":
         format_sintax(df, args.outfile)
