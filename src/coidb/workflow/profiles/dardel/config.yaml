@@ -7,21 +7,21 @@ default-resources:
 
 set-resources:
   filter:
-    mem_mb: 3552
+    mem_mb: 26640
   fill_missing:
     mem_mb: 3552
   calculate_consensus:
-    mem_mb: 17760
-  add_to_vsearch:
-    mem_mb: 3552
+    mem_mb: 14208
   vsearch:
     runtime: 30
+  add_to_vsearch:
+    mem_mb: 3552
   parse_backbone:
     mem_mb: 3552
 
 set-threads:
-  calculate_consensus: 10
-  vsearch: 2
+  filter: 15
+  calculate_consensus: 8
 
 printshellcmds: False
 local-cores: 1
