@@ -135,8 +135,20 @@ input_file: '<path-to-download>.tar.gz'
 
 1. Go to the BOLD systems [data package page](https://bench.boldsystems.org/index.php/datapackages/Latest).
 2. Login is required to access files on this page, so either login or sign up. 
-3. Click the **Data package (tar.gz compressed)** download button, accept the terms and click **Download** to obtain a temporary download link. 
+3. Click the **Data package (tar.gz compressed)** download button, accept the terms and click **Download** to obtain a temporary download link.
 4. Use the link to download the data package which will be named `BOLD_Public.<dd>-<Mmm>-<YYYY>.tar.gz`, for example `BOLD_Public.20-Jun-2025.tar.gz`.
+
+> [!TIP]
+> To download via the command line you can copy the Download link instead of clicking it, then use `wget` or `curl` to download directly to a file of your choice. For example, to download the data package to a directory called `data/` you could run:
+> ```bash
+> mkdir data
+> wget -O data/BOLD_Public.20-Jun-2025.tar.gz <copied download link>
+> ```
+> or with `curl`:
+> ```bash
+> mkdir data 
+> curl -o data/BOLD_Public.20-Jun-2025.tar.gz <copied download link>
+> ```
 
 The downloaded file can now be used as input to `coidb`.
 
