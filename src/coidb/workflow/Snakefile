@@ -38,10 +38,10 @@ rule all:
             "{output_dir}/{f}",
             output_dir=config["output_dir"],
             f=[
-                "coidb.dada2.toGenus.fasta.gz",
-                "coidb.dada2.toSpecies.fasta.gz",
-                "coidb.dada2.addSpecies.fasta.gz",
-                "coidb.sintax.fasta.gz",
+                "dada2/coidb.dada2.toGenus.fasta.gz",
+                "dada2/coidb.dada2.toSpecies.fasta.gz",
+                "dada2/coidb.dada2.addSpecies.fasta.gz",
+                "sintax/coidb.sintax.fasta.gz",
                 "coidb.BOLD_BIN.consensus_taxonomy.tsv.gz",
                 "backbone.info.tsv.gz",
                 "from_backbone.BOLD_BIN.consensus_taxonomy.tsv.gz",
@@ -390,7 +390,7 @@ rule format_sintax:
         tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        fasta=temp(os.path.join(config["output_dir"], "coidb.sintax.fasta.gz")),
+        fasta=temp(os.path.join(config["output_dir"], "sintax/coidb.sintax.fasta.gz")),
     log:
         os.path.join(config["output_dir"], "_logs/format_sintax.log"),
     shell:
@@ -411,9 +411,9 @@ rule format_dada2:
         fasta=rules.add_to_vsearch.output.fasta,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        to_genus=temp(os.path.join(config["output_dir"], "coidb.dada2.toGenus.fasta.gz")),
-        to_species=temp(os.path.join(config["output_dir"], "coidb.dada2.toSpecies.fasta.gz")),
-        assign_species=temp(os.path.join(config["output_dir"], "coidb.dada2.addSpecies.fasta.gz")),
+        to_genus=temp(os.path.join(config["output_dir"], "dada2/coidb.dada2.toGenus.fasta.gz")),
+        to_species=temp(os.path.join(config["output_dir"], "dada2/coidb.dada2.toSpecies.fasta.gz")),
+        assign_species=temp(os.path.join(config["output_dir"], "dada2/coidb.dada2.addSpecies.fasta.gz")),
     log:
         os.path.join(config["output_dir"], "_logs/format_dada2.log"),
     shell:
