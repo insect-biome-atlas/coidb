@@ -6,6 +6,25 @@ import gzip as gz
 from tempfile import NamedTemporaryFile
 
 
+def read_records(f):
+    """
+    Read records from fasta file
+    """
+    records = []
+    if f.endswith(".gz"):
+        open_fn = gz.open
+        mode = "rt"
+    else:
+        open_fn = open
+        mode = "r"
+    with open_fn(f, mode) as fhin:
+        for line in fhin:
+            line = line.rstrip()
+            if line.startswith(">"):
+                records.append(line.lstrip(">"))
+    return records
+
+
 def series_to_fasta(series, outfile, compress=False):
     """
     Writes a polars Series to a file in fasta format
