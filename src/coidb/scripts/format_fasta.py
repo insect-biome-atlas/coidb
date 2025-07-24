@@ -3,7 +3,7 @@
 from argparse import ArgumentParser
 import polars as pl
 import gzip as gz
-from coidb import series_to_fasta
+from coidb import series_to_fasta, read_records
 
 
 def format_dada2(df, outfile_toGenus, outfile_toSpecies, outfile_assignSpecies):
@@ -100,24 +100,37 @@ def format_sintax(df, outfile):
         compress = False
     series_to_fasta(fasta_series, outfile, compress=compress)
 
-
-def read_records(f):
+def format_qiime2(df, outfile):
     """
-    Read records from fasta file
+    Output a tab separated taxonomy file with columns 'Taxon' and 'Feature ID'
+    which can be used with QIIME2
     """
-    records = []
-    if f.endswith(".gz"):
-        open_fn = gz.open
-        mode = "rt"
+    if outfile.endswith(".gz"):
+        compress = True
     else:
-        open_fn = open
-        mode = "r"
-    with open_fn(f, mode) as fhin:
-        for line in fhin:
-            line = line.rstrip()
-            if line.startswith(">"):
-                records.append(line.lstrip(">"))
-    return records
+        compress = False
+    df = (
+        # add rank prefix
+        df.with_columns(
+            [
+                ("k__"+pl.col("kingdom")).alias("kingdom"),
+                ("p__"+pl.col("phylum")).alias("phylum"),
+                ("c__"+pl.col("class")).alias("class"),
+                ("o__"+pl.col("order")).alias("order"),
+                ("f__"+pl.col("family")).alias("family"),
+                ("g__"+pl.col("genus")).alias("genus"),
+                ("s__"+pl.col("species")).alias("species"),
+                ("t__"+pl.col("bin_uri")).alias("bin_uri")
+            ]
+        # concatenate rank columns
+        ).with_columns(
+            pl.concat_str(
+                ["kingdom","phylum","class","order","family","genus","species","bin_uri"],
+                separator="; "
+            ).alias("Taxon")
+        ).select(["processid","Taxon"]).rename({'processid': 'Feature ID'})
+    # write to file
+    ).write_csv(outfile, separator="\t", compress=compress)
 
 
 def main():
@@ -161,6 +174,13 @@ def main():
         required=True,
         help="Output file for assignSpecies",
     )
+    qiime2_parser = subparsers.add_parser("qiime2", help="QIIME2 format options")
+    qiime2_parser.add_argument(
+        "--qiime2_outfile", 
+        type=str, 
+        required=True, 
+        help="TSV file with taxonomic info for use with QIIME2"
+    )
     args = parser.parse_args()
     if args.fasta:
         records = read_records(args.fasta)
@@ -188,3 +208,5 @@ def main():
             outfile_toSpecies=args.outfile_toSpecies,
             outfile_assignSpecies=args.outfile_assignSpecies,
         )
+    elif args.format == "qiime2":
+        format_qiime2(df, args.qiime2_outfile)
