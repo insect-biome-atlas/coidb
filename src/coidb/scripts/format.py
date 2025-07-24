@@ -130,7 +130,13 @@ def format_qiime2(df, outfile):
             ).alias("Taxon")
         ).select(["processid","Taxon"]).rename({'processid': 'Feature ID'})
     # write to file
-    ).write_csv(outfile, separator="\t", compress=compress)
+    )
+    if compress:
+        with gz.open(outfile, 'wb') as fhout:
+            df.write_csv(fhout, separator="\t")
+    else:
+        with open(outfile, 'w') as fhout:
+            df.write_csv(fhout, separator="\t")
 
 
 def main():
