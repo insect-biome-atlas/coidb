@@ -5,18 +5,16 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 keywords = []
-authors = [
-  { name = "John Sundh", email = "john.sundh@scilifelab.se" },
-]
+authors = [{ name = "John Sundh", email = "john.sundh@scilifelab.se" }]
 version = "0.6.0"
 [project.scripts]
 coidb = "coidb.cli:coidb"
 filter-records = "coidb.scripts.filter:main"
 fill-missing = "coidb.scripts.fill_missing:main"
-format-fasta = "coidb.scripts.format_fasta:main"
+format = "coidb.scripts.format:main"
 consensus-taxonomy = "coidb.scripts.consensus_taxonomy:main"
 parse-backbone = "coidb.scripts.parse_backbone:main"
 
-[build-system] 
+[build-system]
 build-backend = "hatchling.build"
 requires = ["hatchling"]

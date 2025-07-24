@@ -394,7 +394,7 @@ rule format_sintax:
         os.path.join(config["output_dir"], "_logs/format_sintax.log"),
     shell:
         """
-        format-fasta --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} \
+        format --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} \
             sintax --outfile {output.fasta} 2>{log}
         """
 
@@ -417,7 +417,7 @@ rule format_dada2:
         os.path.join(config["output_dir"], "_logs/format_dada2.log"),
     shell:
         """
-        format-fasta --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} dada2 \
+        format --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} dada2 \
             --outfile_toGenus {output.to_genus} --outfile_toSpecies {output.to_species} \
             --outfile_assignSpecies {output.assign_species} 2>{log}
         """
@@ -439,11 +439,10 @@ rule format_qiime2:
         os.path.join(config["output_dir"], "_logs", "format_qiime2.log")
     shell:
         """
-        format-fasta --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} qiime2 \
+        format --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} qiime2 \
             --qiime2_outfile {output} 2>{log}
         """
-        
-        
+             
 rule concat_timestamps:
     """
     This rule combines the timestamp files into a single file.
