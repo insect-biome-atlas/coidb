@@ -11,7 +11,7 @@ version = "0.6.0"
 coidb = "coidb.cli:coidb"
 filter-records = "coidb.scripts.filter:main"
 fill-missing = "coidb.scripts.fill_missing:main"
-format = "coidb.scripts.format:main"
+coidb-format = "coidb.scripts.format:main"
 consensus-taxonomy = "coidb.scripts.consensus_taxonomy:main"
 parse-backbone = "coidb.scripts.parse_backbone:main"
 
