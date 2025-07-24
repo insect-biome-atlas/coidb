@@ -24,8 +24,6 @@ localrules:
     gzip,
     collect_vsearch,
     download_backbone,
-    sintax_fasta,
-    dada2_fasta,
     concat_timestamps
 
 wildcard_constraints:
@@ -42,6 +40,7 @@ rule all:
                 "dada2/coidb.dada2.toSpecies.fasta.gz",
                 "dada2/coidb.dada2.addSpecies.fasta.gz",
                 "sintax/coidb.sintax.fasta.gz",
+                "qiime2/coidb.qiime2.info.tsv.gz",
                 "coidb.BOLD_BIN.consensus_taxonomy.tsv.gz",
                 "backbone.info.tsv.gz",
                 "from_backbone.BOLD_BIN.consensus_taxonomy.tsv.gz",
@@ -374,7 +373,7 @@ rule add_to_vsearch:
             s=">"+pl.col("processid")+"\n"+pl.col("seq")
         ).select("s").sink_csv(f.name, include_header=False, quote_style="never")
         # Concatenate single record bins fasta + vsearch clustered fasta
-        shell("cat {f.name} {input.fasta} | gzip -c > {output.fasta}")
+        shell("cat {f.name} {input.fasta} | seqkit seq -u | gzip -c > {output.fasta}")
         os.remove(f.name)
 
 
@@ -423,6 +422,28 @@ rule format_dada2:
             --outfile_assignSpecies {output.assign_species} 2>{log}
         """
 
+rule format_qiime2:
+    """
+    This rule formats the tsv file for use with QIIME2 via
+    qiime tools import --type 'FeatureData[Taxonomy]' --input-format TSVTaxonomyFormat
+    """
+    message:
+        "Generate QIIME2 compatible TSV file"
+    input:
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
+        fasta=rules.add_to_vsearch.output.fasta,
+        consensus=rules.calculate_consensus.output.tsv,
+    output:
+        os.path.join(config["output_dir"], "qiime2", "coidb.qiime2.info.tsv.gz")
+    log:
+        os.path.join(config["output_dir"], "_logs", "format_qiime2.log")
+    shell:
+        """
+        format-fasta --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} qiime2 \
+            --qiime2_outfile {output} 2>{log}
+        """
+        
+        
 rule concat_timestamps:
     """
     This rule combines the timestamp files into a single file.
