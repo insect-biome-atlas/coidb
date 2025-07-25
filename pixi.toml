@@ -1,25 +1,25 @@
-[workspace] 
+[workspace]
 channels = [
   "https://prefix.dev/pixi-build-backends",
   "https://prefix.dev/conda-forge",
-  "bioconda"
+  "bioconda",
 ]
 platforms = ["linux-64", "osx-arm64", "osx-64"]
 preview = ["pixi-build"]
 readme = "README.md"
 
 
-[dependencies] 
+[dependencies]
 coidb = { path = "." }
 
-[package] 
+[package]
 name = "coidb"
-version = "0.1.0"
+version = "0.6.0"
 
-[package.build] 
+[package.build]
 backend = { name = "pixi-build-python", version = "0.1.*" }
 
-[package.host-dependencies] 
+[package.host-dependencies]
 hatchling = "==1.26.3"
 
 [package.run-dependencies]
