@@ -1,0 +1,44 @@
+tagline: "A python package for processing metabarcoding references"
+conda: False
+
+cli:
+  input_file: 
+    type: path
+    short: "i"
+    help: "Input tar.gz archive dowloaded from BOLD"
+    required: True
+  output_dir:
+    type: path
+    short: "o"
+    help: "Folder to store database files in"
+    default: "results"
+  temp_dir:
+    type: path
+    help: "Folder for temporary files"
+    default: "tmp"
+  consensus_threshold:
+    type: int
+    help: "Threshold (in %) when calculating consensus taxonomy"
+    default: 80
+  consensus_method:
+    type: str
+    help: "Method to use when calculating consensus"
+    choices: 
+      - rank
+      - full
+    default: rank
+  vsearch_identity:
+    type: float
+    help: "Identity at which to cluster sequences per BIN"
+    default: 1.0
+  ranks:
+    type: list[str]
+    help: Ranks to use for calculating consensus and generating fastas
+    default: ["kingdom","phylum","class","order","family","genus","species"]
+  min_len:
+    type: int
+    help: "Minimum length of sequences to include"
+    default: 500
+  account:
+    type: str
+    help: "SLURM compute account"
