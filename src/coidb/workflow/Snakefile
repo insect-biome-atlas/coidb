@@ -7,14 +7,6 @@ from snakemake.utils import validate
 import os
 import sys
 
-validate(config, "schemas/config.schema.yaml")
-
-if not config["input_file"]:
-    sys.stderr.write("NO INPUT FILE SPECIFIED! Use --input_file flag to set.\n")
-    sys.exit(1)
-
-if not config["temp_dir"]:
-    config["temp_dir"] = os.path.join(config["output_dir"], "tmp")
 
 from coidb import series_to_fasta
 
@@ -24,10 +16,11 @@ localrules:
     gzip,
     collect_vsearch,
     download_backbone,
-    concat_timestamps
+    concat_timestamps,
+
 
 wildcard_constraints:
-    n = "backbone|coidb"
+    n="backbone|coidb",
 
 
 rule all:
@@ -45,23 +38,29 @@ rule all:
                 "backbone.info.tsv.gz",
                 "from_backbone.BOLD_BIN.consensus_taxonomy.tsv.gz",
                 "coidb.info.tsv.gz",
-                "timestamps.txt"
-            ]
-        )
+                "timestamps.txt",
+            ],
+        ),
+
 
 rule download_backbone:
     """
     This rule downloads the latest GBIF backbone release.
     """
-    message: "Downloading GBIF taxonomy backbone"
+    message:
+        "Downloading GBIF taxonomy backbone"
     output:
         tsv=temp(expand("{tempdir}/_backbone/Taxon.tsv", tempdir=config["temp_dir"])),
-        timestamp=temp(expand("{output_dir}/backbone_timestamp.txt", output_dir=config["output_dir"]))
+        timestamp=temp(
+            expand(
+                "{output_dir}/backbone_timestamp.txt", output_dir=config["output_dir"]
+            )
+        ),
     log:
         os.path.join(config["output_dir"], "_logs/download_backbone.log"),
     params:
-        output_dir = lambda wildcards, output: os.path.dirname(output[0]),
-        url = "https://hosted-datasets.gbif.org/datasets/backbone/current/backbone.zip"
+        output_dir=lambda wildcards, output: os.path.dirname(output[0]),
+        url="https://hosted-datasets.gbif.org/datasets/backbone/current/backbone.zip",
     shell:
         """
         curl -o {params.output_dir}/backbone.zip {params.url} > {log} 2>&1
@@ -73,17 +72,23 @@ rule download_backbone:
         rm {params.output_dir}/backbone.zip
         """
 
+
 rule parse_backbone:
     """
     This rule parses the GBIF backbone for downstream use.
     """
-    message: "Extracting backbone taxonomy for BOLD bins"
+    message:
+        "Extracting backbone taxonomy for BOLD bins"
     output:
-        temp(expand("{tempdir}/_backbone/bold_bin.taxonomy.tsv", tempdir=config["temp_dir"]))
+        temp(
+            expand(
+                "{tempdir}/_backbone/bold_bin.taxonomy.tsv", tempdir=config["temp_dir"]
+            )
+        ),
     input:
-        rules.download_backbone.output[0]
+        rules.download_backbone.output[0],
     log:
-        os.path.join(config["output_dir"], "_logs/parse_backbone.log")
+        os.path.join(config["output_dir"], "_logs/parse_backbone.log"),
     shell:
         """
         parse-backbone {input} {output} 2>{log}
@@ -91,25 +96,28 @@ rule parse_backbone:
 
 
 rule gzip:
-    message: "Compressing {wildcards.f}"
+    message:
+        "Compressing {wildcards.f}"
     input:
-        "{f}.tsv"
+        "{f}.tsv",
     output:
-        "{f}.tsv.gz"
+        "{f}.tsv.gz",
     shell:
         """
         gzip -c {input} > {output}
         """
 
+
 checkpoint extract_input:
     """
     This checkpoint extracts the input tarball (if specified).
     """
-    message: "Extracting input file {config[input_file]}"
+    message:
+        "Extracting input file {config[input_file]}"
     input:
         tarball=config["input_file"],
     output:
-        directory(os.path.join(config["temp_dir"],"_extract")),
+        directory(os.path.join(config["temp_dir"], "_extract")),
     log:
         os.path.join(config["output_dir"], "_logs/extract_input.log"),
     shell:
@@ -130,7 +138,7 @@ def get_extracted(wildcards):
         tsv = expand(
             "{temp_dir}/_extract/{f}.tsv",
             f=glob_wildcards(os.path.join(checkpoint_output, "{f}.tsv")).f,
-            temp_dir=config["temp_dir"]
+            temp_dir=config["temp_dir"],
         )
     elif config["input_file"].endswith(".tsv"):
         tsv = config["input_file"]
@@ -157,12 +165,14 @@ rule filter:
         tsv=get_extracted,
     output:
         tsv=temp(os.path.join(config["temp_dir"], "_processed/data.filtered.tsv")),
-        timestamp=temp(expand("{output_dir}/input_timestamp.txt", output_dir=config["output_dir"]))
+        timestamp=temp(
+            expand("{output_dir}/input_timestamp.txt", output_dir=config["output_dir"])
+        ),
     log:
         os.path.join(config["output_dir"], "_logs/filter.log"),
     params:
         min_len=config["min_len"],
-        input_file=config["input_file"]
+        input_file=config["input_file"],
     shell:
         """
         echo "Input data:" >> {output.timestamp}
@@ -171,11 +181,56 @@ rule filter:
         filter-records -i {input.tsv} -o {output.tsv} -l {params.min_len} 2>{log}
         """
 
+
+rule match_names:
+    """
+    Uses the pygbif module to match species names in filtered data to the GBIF
+    backbone.
+    """
+    message:
+        "Matching names to GBIF backbone"
+    input:
+        rules.filter.output.tsv,
+    output:
+        tsv=temp(
+            os.path.join(
+                config["temp_dir"], "_processed/data.filtered.names_matched.tsv"
+            )
+        ),
+    log:
+        os.path.join(config["output_dir"], "_logs/match_names.log"),
+    threads: 4
+    shell:
+        """
+        match-names -i {input} -o {output} -p {threads} > {log} 2>&1
+        """
+
+
+rule consolidate_names:
+    """
+    Consolidates names from BOLD and GBIF backbone.
+
+    1. If a given BOLD record does not have a GBIF taxonomy match, the BOLD
+    assignment is kept.
+    
+    2. If a higher taxon name is missing in GBIF but not in BOLD, import it from
+    BOLD if the next higher rank that is not empty in either GBIF or BOLD has
+    the same content. Otherwise leave the higher taxon name empty.
+    """
+    input:
+        filtered=rules.filter.output.tsv,
+        matched=rules.match_names.output.tsv,
+        backbone=rules.parse_backbone.output[0],
+    output:
+        tsv=os.path.join(config["temp_dir"], "_processed", "consolidated.taxa.tsv"),
+
+
 def fill_missing_input(wildcards):
     if wildcards.n == "backbone":
         return rules.parse_backbone.output[0]
     elif wildcards.n == "coidb":
         return rules.filter.output.tsv
+
 
 rule fill_missing:
     """
@@ -184,15 +239,16 @@ rule fill_missing:
     message:
         "Filling missing ranks for file {wildcards.n}.info.tsv"
     input:
-        fill_missing_input
+        fill_missing_input,
     output:
-        tsv=temp(expand("{output_dir}/{{n}}.info.tsv", output_dir=config["output_dir"]))
+        tsv=temp(expand("{output_dir}/{{n}}.info.tsv", output_dir=config["output_dir"])),
     log:
         os.path.join(config["output_dir"], "_logs/fill_missing.{n}.log"),
     shell:
         """
         fill-missing -i {input} -o {output.tsv} 2>{log}
         """
+
 
 checkpoint multi_record_bins:
     """
@@ -209,19 +265,24 @@ checkpoint multi_record_bins:
     message:
         "Identifying multi-record BINs"
     input:
-        tsv=os.path.join(config["output_dir"], "coidb.info.tsv")
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
     output:
-        fasta=temp(os.path.join(config["temp_dir"], "_processed/multi_record_bins.fasta")),
-        fai=temp(os.path.join(config["temp_dir"], "_processed/multi_record_bins.fasta.fai")),
-        tsv=temp(os.path.join(config["temp_dir"], "_processed/multi_record_bins.tsv"))
+        fasta=temp(
+            os.path.join(config["temp_dir"], "_processed/multi_record_bins.fasta")
+        ),
+        fai=temp(
+            os.path.join(config["temp_dir"], "_processed/multi_record_bins.fasta.fai")
+        ),
+        tsv=temp(os.path.join(config["temp_dir"], "_processed/multi_record_bins.tsv")),
     log:
         os.path.join(config["output_dir"], "_logs/multi_record_bins.log"),
     run:
-        df = (pl.scan_csv(input.tsv, separator="\t", low_memory=True).select(["processid","bin_uri","seq"]))
+        df = pl.scan_csv(input.tsv, separator="\t", low_memory=True).select(
+            ["processid", "bin_uri", "seq"]
+        )
         # Collect all BOLD BINs with > 1 record
         q = (
-            df
-            .filter(pl.col("bin_uri").str.starts_with("BOLD:"))
+            df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
             .group_by("bin_uri")
             .len()
             .filter(pl.col("len") > 1)
@@ -231,15 +292,16 @@ checkpoint multi_record_bins:
         q.write_csv(output.tsv, separator="\t")
         multi_record_bins = q.to_series().to_list()
         # Write sequences to file
-        df.filter(
-            pl.col("bin_uri").is_in(multi_record_bins)
-        ).with_columns(
-            s=">"+pl.col("processid")+" bin_uri:"+pl.col("bin_uri")+"\n"+pl.col("seq")
+        df.filter(pl.col("bin_uri").is_in(multi_record_bins)).with_columns(
+            s=">"
+            + pl.col("processid")
+            + " bin_uri:"
+            + pl.col("bin_uri")
+            + "\n"
+            + pl.col("seq")
         ).select("s").sink_csv(output.fasta, include_header=False, quote_style="never")
         # Generate fasta index
-        shell(
-            "seqkit faidx {output.fasta} 2>{log}"
-        )
+        shell("seqkit faidx {output.fasta} 2>{log}")
 
 
 rule calculate_consensus:
@@ -252,21 +314,30 @@ rule calculate_consensus:
         "Calculating consensus taxonomy for BINs"
     input:
         tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
-        backbone=os.path.join(config["output_dir"], "backbone.info.tsv")
+        backbone=os.path.join(config["output_dir"], "backbone.info.tsv"),
     output:
-        tsv=temp(os.path.join(config["output_dir"], "coidb.BOLD_BIN.consensus_taxonomy.tsv")),
-        existing=temp(os.path.join(config["output_dir"], "from_backbone.BOLD_BIN.consensus_taxonomy.tsv"))
+        tsv=temp(
+            os.path.join(config["output_dir"], "coidb.BOLD_BIN.consensus_taxonomy.tsv")
+        ),
+        existing=temp(
+            os.path.join(
+                config["output_dir"], "from_backbone.BOLD_BIN.consensus_taxonomy.tsv"
+            )
+        ),
     log:
         os.path.join(config["output_dir"], "_logs/calculate_consensus.log"),
     params:
         threshold=config["consensus_threshold"],
         ranks=config["ranks"],
-        method=config["consensus_method"]
+        method=config["consensus_method"],
     threads: 1
     shell:
         """
-        consensus-taxonomy -i {input.tsv} -o {output.tsv} -u {input.backbone} --write_existing {output.existing} -r {params.ranks} -p {threads} -t {params.threshold} 2>{log}
+        consensus-taxonomy -i {input.tsv} -o {output.tsv} \
+            -u {input.backbone} --write_existing {output.existing} \
+            -r {params.ranks} -m {params.method} -t {params.threshold} -p {threads} 2>{log}
         """
+
 
 rule vsearch:
     """
@@ -279,16 +350,12 @@ rule vsearch:
         fai=os.path.join(config["temp_dir"], "_processed/multi_record_bins.fasta.fai"),
     output:
         fasta=temp(
-                expand(
-                    "{tempdir}/_vsearch/{{bin_uri}}.fasta",
-                    tempdir=config["temp_dir"]
-                )
-            ),
+            expand("{tempdir}/_vsearch/{{bin_uri}}.fasta", tempdir=config["temp_dir"])
+        ),
     log:
         expand(
-            "{tempdir}/_logs/vsearch_logs/{{bin_uri}}.log",
-            tempdir=config["temp_dir"]
-        )
+            "{tempdir}/_logs/vsearch_logs/{{bin_uri}}.log", tempdir=config["temp_dir"]
+        ),
     threads: 1
     params:
         id=config["vsearch_identity"],
@@ -321,7 +388,11 @@ def get_vsearch_fastas(wildcards):
     multi_record_bins = df.select("bin_uri").to_series().to_list()
     # Return a list of vsearch output files which will be used as targets for the collect_vsearch rule,
     # thus triggering vsearch to run on these BOLD BINs
-    return expand("{tempdir}/_vsearch/{bin_uri}.fasta", bin_uri=multi_record_bins, tempdir=config["temp_dir"])
+    return expand(
+        "{tempdir}/_vsearch/{bin_uri}.fasta",
+        bin_uri=multi_record_bins,
+        tempdir=config["temp_dir"],
+    )
 
 
 rule collect_vsearch:
@@ -333,7 +404,9 @@ rule collect_vsearch:
     input:
         fasta=get_vsearch_fastas,
     output:
-        fasta=temp(os.path.join(config["temp_dir"], "_processed/vsearch_clustered.fasta.gz")),
+        fasta=temp(
+            os.path.join(config["temp_dir"], "_processed/vsearch_clustered.fasta.gz")
+        ),
     log:
         os.path.join(config["output_dir"], "_logs/collect_vsearch.log"),
     shell:
@@ -355,22 +428,18 @@ rule add_to_vsearch:
     output:
         fasta=os.path.join(config["output_dir"], "coidb.clustered.fasta.gz"),
     run:
-        df = pl.scan_csv(input.tsv, separator="\t", low_memory=True).select(["processid","bin_uri","seq"])
+        df = pl.scan_csv(input.tsv, separator="\t", low_memory=True).select(
+            ["processid", "bin_uri", "seq"]
+        )
         # Collect all BOLD BINs with just 1 record
         q = (
-            df
-            .group_by("bin_uri")
-            .len()
-            .filter(pl.col("len") == 1)
-            .select("bin_uri")
+            df.group_by("bin_uri").len().filter(pl.col("len") == 1).select("bin_uri")
         ).collect(engine="streaming")
         single_record_bins = q["bin_uri"].to_list()
         # Get records for these bins and write seqs to temporary file
         f = NamedTemporaryFile(mode="w", delete=False)
-        df.filter(
-            pl.col("bin_uri").is_in(single_record_bins)
-        ).with_columns(
-            s=">"+pl.col("processid")+"\n"+pl.col("seq")
+        df.filter(pl.col("bin_uri").is_in(single_record_bins)).with_columns(
+            s=">" + pl.col("processid") + "\n" + pl.col("seq")
         ).select("s").sink_csv(f.name, include_header=False, quote_style="never")
         # Concatenate single record bins fasta + vsearch clustered fasta
         shell("cat {f.name} {input.fasta} | seqkit seq -u | gzip -c > {output.fasta}")
@@ -398,6 +467,7 @@ rule format_sintax:
             sintax --outfile {output.fasta} 2>{log}
         """
 
+
 rule format_dada2:
     """
     This rule formats sequences from the vsearch clustered fasta into DADA2
@@ -410,9 +480,15 @@ rule format_dada2:
         fasta=rules.add_to_vsearch.output.fasta,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        to_genus=temp(os.path.join(config["output_dir"], "dada2/coidb.dada2.toGenus.fasta.gz")),
-        to_species=temp(os.path.join(config["output_dir"], "dada2/coidb.dada2.toSpecies.fasta.gz")),
-        assign_species=temp(os.path.join(config["output_dir"], "dada2/coidb.dada2.addSpecies.fasta.gz")),
+        to_genus=temp(
+            os.path.join(config["output_dir"], "dada2/coidb.dada2.toGenus.fasta.gz")
+        ),
+        to_species=temp(
+            os.path.join(config["output_dir"], "dada2/coidb.dada2.toSpecies.fasta.gz")
+        ),
+        assign_species=temp(
+            os.path.join(config["output_dir"], "dada2/coidb.dada2.addSpecies.fasta.gz")
+        ),
     log:
         os.path.join(config["output_dir"], "_logs/format_dada2.log"),
     shell:
@@ -421,6 +497,7 @@ rule format_dada2:
             --outfile_toGenus {output.to_genus} --outfile_toSpecies {output.to_species} \
             --outfile_assignSpecies {output.assign_species} 2>{log}
         """
+
 
 rule format_qiime2:
     """
@@ -434,24 +511,25 @@ rule format_qiime2:
         fasta=rules.add_to_vsearch.output.fasta,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        os.path.join(config["output_dir"], "qiime2", "coidb.qiime2.info.tsv.gz")
+        os.path.join(config["output_dir"], "qiime2", "coidb.qiime2.info.tsv.gz"),
     log:
-        os.path.join(config["output_dir"], "_logs", "format_qiime2.log")
+        os.path.join(config["output_dir"], "_logs", "format_qiime2.log"),
     shell:
         """
         coidb-format --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} qiime2 \
             --qiime2_outfile {output} 2>{log}
         """
-             
+
+
 rule concat_timestamps:
     """
     This rule combines the timestamp files into a single file.
     """
     output:
-        os.path.join(config["output_dir"], "timestamps.txt")
+        os.path.join(config["output_dir"], "timestamps.txt"),
     input:
         rules.download_backbone.output.timestamp,
-        rules.filter.output.timestamp
+        rules.filter.output.timestamp,
     shell:
         """
         cat {input} > {output}
