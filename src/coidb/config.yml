@@ -1,8 +1,0 @@
-input_file: ""
-output_dir: "results"
-temp_dir: "results/tmp"
-min_len: 500
-consensus_threshold: 80
-consensus_method: "rank"
-ranks: ["kingdom","phylum","class","order","family","genus","species"]
-vsearch_identity: 1.0
