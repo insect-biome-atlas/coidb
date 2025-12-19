@@ -138,3 +138,8 @@ bold_*
 # pixi environments
 .pixi
 *.egg-info
+
+data
+tmp
+temp
+results
