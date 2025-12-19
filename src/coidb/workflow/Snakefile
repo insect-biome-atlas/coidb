@@ -23,76 +23,33 @@ wildcard_constraints:
     n="backbone|coidb",
 
 
-rule all:
-    input:
-        expand(
+def all_input(wildcards):
+    input = expand(
+        "{output_dir}/{f}",
+        output_dir=config["output_dir"],
+        f=[
+            "dada2/coidb.dada2.toGenus.fasta.gz",
+            "dada2/coidb.dada2.toSpecies.fasta.gz",
+            "dada2/coidb.dada2.addSpecies.fasta.gz",
+            "sintax/coidb.sintax.fasta.gz",
+            "qiime2/coidb.qiime2.info.tsv.gz",
+            "coidb.BOLD_BIN.consensus_taxonomy.tsv.gz",
+            "coidb.info.tsv.gz",
+            "timestamps.txt",
+        ],
+    )
+    if config["gbif_backbone"]:
+        input += expand(
             "{output_dir}/{f}",
             output_dir=config["output_dir"],
-            f=[
-                "dada2/coidb.dada2.toGenus.fasta.gz",
-                "dada2/coidb.dada2.toSpecies.fasta.gz",
-                "dada2/coidb.dada2.addSpecies.fasta.gz",
-                "sintax/coidb.sintax.fasta.gz",
-                "qiime2/coidb.qiime2.info.tsv.gz",
-                "coidb.BOLD_BIN.consensus_taxonomy.tsv.gz",
-                "backbone.info.tsv.gz",
-                "from_backbone.BOLD_BIN.consensus_taxonomy.tsv.gz",
-                "coidb.info.tsv.gz",
-                "timestamps.txt",
-            ],
-        ),
+            f=["backbone.info.tsv.gz"],
+        )
+    return input
 
 
-rule download_backbone:
-    """
-    This rule downloads the latest GBIF backbone release.
-    """
-    message:
-        "Downloading GBIF taxonomy backbone"
-    output:
-        tsv=temp(expand("{tempdir}/_backbone/Taxon.tsv", tempdir=config["temp_dir"])),
-        timestamp=temp(
-            expand(
-                "{output_dir}/backbone_timestamp.txt", output_dir=config["output_dir"]
-            )
-        ),
-    log:
-        os.path.join(config["output_dir"], "_logs/download_backbone.log"),
-    params:
-        output_dir=lambda wildcards, output: os.path.dirname(output[0]),
-        url="https://hosted-datasets.gbif.org/datasets/backbone/current/backbone.zip",
-    shell:
-        """
-        curl -o {params.output_dir}/backbone.zip {params.url} > {log} 2>&1
-        echo "GBIF backbone: " > {output.timestamp}
-        timestamp=$(unzip -p {params.output_dir}/backbone.zip eml.xml | grep dateStamp | cut -f2 -d '>' | cut -f1 -d '<')
-        echo "  - date: $timestamp" >> {output.timestamp}
-        echo "  - url: {params.url}" >> {output.timestamp}
-        unzip -p {params.output_dir}/backbone.zip Taxon.tsv | cut -f1,3,6,8,12,18- > {output.tsv}
-        rm {params.output_dir}/backbone.zip
-        """
-
-
-rule parse_backbone:
-    """
-    This rule parses the GBIF backbone for downstream use.
-    """
-    message:
-        "Extracting backbone taxonomy for BOLD bins"
-    output:
-        temp(
-            expand(
-                "{tempdir}/_backbone/bold_bin.taxonomy.tsv", tempdir=config["temp_dir"]
-            )
-        ),
+rule all:
     input:
-        rules.download_backbone.output[0],
-    log:
-        os.path.join(config["output_dir"], "_logs/parse_backbone.log"),
-    shell:
-        """
-        parse-backbone {input} {output} 2>{log}
-        """
+        all_input,
 
 
 rule gzip:
@@ -182,49 +139,6 @@ rule filter:
         """
 
 
-rule match_names:
-    """
-    Uses the pygbif module to match species names in filtered data to the GBIF
-    backbone.
-    """
-    message:
-        "Matching names to GBIF backbone"
-    input:
-        rules.filter.output.tsv,
-    output:
-        tsv=temp(
-            os.path.join(
-                config["temp_dir"], "_processed/data.filtered.names_matched.tsv"
-            )
-        ),
-    log:
-        os.path.join(config["output_dir"], "_logs/match_names.log"),
-    threads: 4
-    shell:
-        """
-        match-names -i {input} -o {output} -p {threads} > {log} 2>&1
-        """
-
-
-rule consolidate_names:
-    """
-    Consolidates names from BOLD and GBIF backbone.
-
-    1. If a given BOLD record does not have a GBIF taxonomy match, the BOLD
-    assignment is kept.
-    
-    2. If a higher taxon name is missing in GBIF but not in BOLD, import it from
-    BOLD if the next higher rank that is not empty in either GBIF or BOLD has
-    the same content. Otherwise leave the higher taxon name empty.
-    """
-    input:
-        filtered=rules.filter.output.tsv,
-        matched=rules.match_names.output.tsv,
-        backbone=rules.parse_backbone.output[0],
-    output:
-        tsv=os.path.join(config["temp_dir"], "_processed", "consolidated.taxa.tsv"),
-
-
 def fill_missing_input(wildcards):
     if wildcards.n == "backbone":
         return rules.parse_backbone.output[0]
@@ -247,6 +161,57 @@ rule fill_missing:
     shell:
         """
         fill-missing -i {input} -o {output.tsv} 2>{log}
+        """
+
+
+if config["gbif_backbone"]:
+
+    include: "rules/match_names.smk"
+
+
+def consensus_input(wildcards):
+    """
+    Feeds input files to calculate_consensus rule.
+
+    If --gbif-backbone command line parameter is used, the GBIF backbone files
+    is also passed.
+    """
+    input = {}
+    input["tsv"] = os.path.join(config["output_dir"], "coidb.info.tsv")
+    if config["gbif_backbone"]:
+        input["backbone"] = (os.path.join(config["output_dir"], "backbone.info.tsv"),)
+    return input
+
+
+rule calculate_consensus:
+    """
+    This rule calculates a consensus taxonomy for BOLD BINs. It uses as input
+    both the BOLD data and the GBIF backbone. If BINs are present in the
+    backbone this information takes precedence.
+    """
+    message:
+        "Calculating consensus taxonomy for BINs"
+    input:
+        unpack(consensus_input),
+    output:
+        tsv=temp(
+            os.path.join(config["output_dir"], "coidb.BOLD_BIN.consensus_taxonomy.tsv")
+        ),
+    log:
+        os.path.join(config["output_dir"], "_logs/calculate_consensus.log"),
+    params:
+        threshold=config["consensus_threshold"],
+        ranks=config["ranks"],
+        method=config["consensus_method"],
+        bb=lambda wildcards, input: (
+            f"-u {input.backbone}" if config["gbif_backbone"] else ""
+        ),
+    threads: 1
+    shell:
+        """
+        consensus-taxonomy -i {input.tsv} -o {output.tsv} \
+            {params.bb} -r {params.ranks} -m {params.method} \
+            -t {params.threshold} -p {threads} 2>{log}
         """
 
 
@@ -302,41 +267,6 @@ checkpoint multi_record_bins:
         ).select("s").sink_csv(output.fasta, include_header=False, quote_style="never")
         # Generate fasta index
         shell("seqkit faidx {output.fasta} 2>{log}")
-
-
-rule calculate_consensus:
-    """
-    This rule calculates a consensus taxonomy for BOLD BINs. It uses as input
-    both the BOLD data and the GBIF backbone. If BINs are present in the
-    backbone this information takes precedence.
-    """
-    message:
-        "Calculating consensus taxonomy for BINs"
-    input:
-        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
-        backbone=os.path.join(config["output_dir"], "backbone.info.tsv"),
-    output:
-        tsv=temp(
-            os.path.join(config["output_dir"], "coidb.BOLD_BIN.consensus_taxonomy.tsv")
-        ),
-        existing=temp(
-            os.path.join(
-                config["output_dir"], "from_backbone.BOLD_BIN.consensus_taxonomy.tsv"
-            )
-        ),
-    log:
-        os.path.join(config["output_dir"], "_logs/calculate_consensus.log"),
-    params:
-        threshold=config["consensus_threshold"],
-        ranks=config["ranks"],
-        method=config["consensus_method"],
-    threads: 1
-    shell:
-        """
-        consensus-taxonomy -i {input.tsv} -o {output.tsv} \
-            -u {input.backbone} --write_existing {output.existing} \
-            -r {params.ranks} -m {params.method} -t {params.threshold} -p {threads} 2>{log}
-        """
 
 
 rule vsearch:
@@ -521,6 +451,13 @@ rule format_qiime2:
         """
 
 
+def timestamp_input(wildcards):
+    input = [rules.filter.output.timestamp[0]]
+    if config["gbif_backbone"]:
+        input.append(rules.download_backbone.output.timestamp[0])
+    return input
+
+
 rule concat_timestamps:
     """
     This rule combines the timestamp files into a single file.
@@ -528,8 +465,7 @@ rule concat_timestamps:
     output:
         os.path.join(config["output_dir"], "timestamps.txt"),
     input:
-        rules.download_backbone.output.timestamp,
-        rules.filter.output.timestamp,
+        timestamp_input,
     shell:
         """
         cat {input} > {output}
