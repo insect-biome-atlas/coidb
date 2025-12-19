@@ -16,6 +16,10 @@ cli:
     type: path
     help: "Folder for temporary files"
     default: "tmp"
+  gbif_backbone:
+    type: boolean
+    help: "Use GBIF backbone to infer consensus taxonomy for BOLD BINs"
+    default: False
   consensus_threshold:
     type: int
     help: "Threshold (in %) when calculating consensus taxonomy"
