@@ -7,6 +7,7 @@ license = "MIT"
 keywords = []
 authors = [{ name = "John Sundh", email = "john.sundh@scilifelab.se" }]
 version = "0.6.0"
+
 [project.scripts]
 coidb = "coidb.cli:coidb"
 filter-records = "coidb.scripts.filter:main"
@@ -14,6 +15,12 @@ fill-missing = "coidb.scripts.fill_missing:main"
 coidb-format = "coidb.scripts.format:main"
 consensus-taxonomy = "coidb.scripts.consensus_taxonomy:main"
 parse-backbone = "coidb.scripts.parse_backbone:main"
+match-names = "coidb.scripts.match_names:main"
+
+[project.urls]
+Documentation = "https://github.com/insect-biome-atlas/coidb#readme"
+Issues = "https://github.com/insect-biome-atlas/coidb/issues"
+Source = "https://github.com/insect-biome-atlas/coidb"
 
 [build-system]
 build-backend = "hatchling.build"
