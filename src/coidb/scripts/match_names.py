@@ -5,7 +5,6 @@ import polars as pl
 from multiprocessing import Pool
 from argparse import ArgumentParser
 from tqdm import tqdm
-from collections import defaultdict
 
 
 def match_species(
@@ -29,14 +28,19 @@ def match_species(
         Dictionary with keys 'name': original species name and <rank>: matched rank
         for the match in GBIF.
     """
-    d = defaultdict.fromkeys(ranks, None)
-    d["name"] = species_name
+    d = {}
+    for rank in ranks:
+        d[rank] = None
     results = species.name_backbone(species_name)
     for rank in ranks:
         try:
-            d[rank] = results[rank]
+            taxa = results[rank]
+            # handle cases where the species
+            if taxa not in d.values():
+                d[rank] = results[rank]
         except KeyError:
             continue
+    d["name"] = species_name
     return d
 
 
