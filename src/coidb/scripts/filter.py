@@ -119,7 +119,6 @@ def main():
         "nuc_basecount",
         "marker_code",
     ]
-    infile = args.infile
     header = get_header(args.infile)
     # If the header does not match proper_header, get indices of the required
     # columns and use extract_non_proper to write these to a temporary file
