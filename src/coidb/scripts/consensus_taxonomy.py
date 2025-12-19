@@ -8,49 +8,151 @@ import time
 from argparse import ArgumentParser
 import re
 
-r = re.compile(r"_X+$")
+regex = re.compile(r"_X+$")
 
 
-def cons(df, group_by, threshold):
-    _df = (
-        df.group_by(group_by)
-        .agg(pl.col("n").sum())
-        .with_columns((pl.col("n") / pl.col("n").sum() * 100).alias("percent"))
-        .filter(pl.col("percent") >= threshold)
-    )
+def find_non_unique(df, ranks):
+    """
+    This function loops through the ranks and for each rank creates a new
+    dataframe with a 'lineage' column which contains all the taxlabels of the
+    current + parent ranks concatenated. It then groups by the current rank and
+    counts number of unique 'lineages' found for the rank. If there's more than
+    1 unique lineage this means that parent ranks have conflicting taxlabels.
+    Taxa with conflicting parent ranks are saved to a list in a dictionary and
+    returned.
+    """
+    non_unique = {}
+    for rank in ranks:
+        i = ranks.index(rank) + 1
+        _ranks = ranks[0:i]
+        q = df.with_columns(
+            pl.concat_str(_ranks, separator=";").alias("lineage")
+        ).select([rank, "lineage"])
+        non_unique[rank] = (
+            q.group_by([rank])
+            .n_unique()
+            .filter(pl.col("lineage") > 1)
+            .select(rank)
+            .to_series()
+            .to_list()
+        )
+    return non_unique
+
+
+def check_parent_ranks(_df, group_ranks, regex):
+    """
+    This function checks the taxonomic labels of <group_ranks> for each row and
+    counts number of ranks that end in '_X' (any number of Xs) using a regex
+    pattern. If all ranks match the regex, the BOLD bin is added to the
+    bins_to_remove list which is finally returned.
+    """
+    bins_to_remove = []
+    rows = _df.select(["bin_uri"] + group_ranks)
+    for row in rows.iter_rows():
+        unassigned = sum([1 if regex.search(x) else 0 for x in row[2:]])
+        if unassigned == len(group_ranks) - 1:
+            bins_to_remove.append(row[0])
+    return bins_to_remove
+
+
+def clean_non_unique_lineages(df, non_unique, ranks):
+    """
+    This function iterates the duplicated ranks/names and attempts to
+    identify BINs that can be removed in order to make the
+    dataframe unique for parent lineages. If BINs cannot be removed, the
+    taxa are instead prefixed with the parent rank
+
+    As an example, the genus Aphaenogaster can be present for BINs like this:
+    kingdom  phylum     class       order         family        genus
+    Animalia Animalia_X Animalia_XX Animalia_XXX  Animalia_XXXX Aphaenogaster
+    Animalia Arthropoda Insecta 	Hymenoptera   Formicidae 	Aphaenogaster
+
+    This function will identify BINs assigned according to the first row, and mark
+    them for removal, while keeping BINs assigned as in the second row.
+
+    If removal of BINs assigned as in the first row is not enough to generate a
+    unique lineage, then the conflicting taxlabels are prefixed with their parent taxa.
+    """
+    bins_to_remove = []
+    for rank in ranks:
+        try:
+            taxa = non_unique[rank]
+        except KeyError:
+            continue
+        for t in taxa:
+            sys.stderr.write(f"{t}\t")
+            group_ranks = ranks[: ranks.index(rank)]
+            parent_rank = ranks[ranks.index(rank) - 1]
+            _df = df.filter(pl.col(rank) == t)
+            _bins_to_remove = check_parent_ranks(_df, group_ranks, regex)
+            if (
+                _df.filter(~pl.col("bin_uri").is_in(_bins_to_remove))
+                .group_by(group_ranks)
+                .len()
+                .height
+                == 1
+            ):
+                bins_to_remove += _bins_to_remove
+                sys.stderr.write(f"removed {','.join(bins_to_remove)}\n")
+            else:
+                df = df.with_columns(
+                    pl.when(pl.col(rank) == t)
+                    .then(pl.concat_str([parent_rank, rank], separator="_"))
+                    .otherwise(pl.col(rank))
+                    .alias(rank)
+                )
+                sys.stderr.write(f"prefixed with parent label\n")
+    return df.filter(~pl.col("bin_uri").is_in(bins_to_remove))
+
+
+def cons(df, group_by, threshold, exclude_missing_data):
+    _df = df.group_by(group_by).agg(pl.col("n").sum())
+    if exclude_missing_data:
+        _df = _df.filter(~pl.any_horizontal(pl.col(group_by).str.contains(r"_X+$")))
+    _df = _df.with_columns(
+        (pl.col("n") / pl.col("n").sum() * 100).alias("percent")
+    ).filter(pl.col("percent") >= threshold)
     return _df
 
 
 def calc_unassigned(row):
-    return sum([True if r.search(x) else False for x in row])
+    return sum([True if regex.search(x) else False for x in row])
 
 
 def calculate_consensus(
     df,
     ranks=["kingdom", "phylum", "class", "order", "family", "genus", "species"],
     threshold=80,
-    method="full",
+    method="rank",
+    exclude_missing_data=False,
 ):
     """
     Calculate consensus taxonomy for a dataframe. The dataframe is expected to
     have the following format:
 
-    kingdom	    phylum	        class	    order	        family	        genus	    species	        bin_uri	        n	bin_rows
-    "Animalia"	"Arthropoda"	"Insecta"	"Lepidoptera"	"Oecophoridae"	"Garrha"	"Garrha carnea"	"BOLD:AGS2783"	41	3
-    "Animalia"	"Arthropoda"	"Insecta"	"Lepidoptera"	"Oecophoridae"	"Garrha"	"Garrha_X"	    "BOLD:AGS2783"	7	3
-    "Animalia"	"Arthropoda"	"Insecta"	"Lepidoptera"	"Oecophoridae"	"Garrha"	"Garrha sp."	"BOLD:AGS2783"	2	3
+    kingdom     phylum          class       order           family
+    genus       species         bin_uri         n   bin_rows "Animalia"
+    "Arthropoda"    "Insecta"   "Lepidoptera"   "Oecophoridae"  "Garrha"
+    "Garrha carnea" "BOLD:AGS2783"  41  3 "Animalia"  "Arthropoda"    "Insecta"
+    "Lepidoptera"   "Oecophoridae"  "Garrha"    "Garrha_X"      "BOLD:AGS2783"
+    7   3 "Animalia"  "Arthropoda"    "Insecta"   "Lepidoptera"   "Oecophoridae"
+    "Garrha"    "Garrha sp."    "BOLD:AGS2783"  2   3
 
-    The function iterates over the length of the ranks list, the first time this
-    list contains all ranks: ['kingdom', 'phylum', 'class', 'order', 'family',
-    'genus', 'species'] and the number of records for each lineage using these
-    ranks is calculated by summing the 'n' column. A percentage is calculated
-    and the dataframe is filtered to only include rows with at least
-    <threshold>%. If the filtered dataframe has only 1 row, this consensus
-    taxonomy is assigned for the BOLD BIN, otherwise the for loop continues by
-    taking away one rank, i.e.: ['kingdom', 'phylum', 'class', 'order',
-    'family', 'genus'] then attemps to calculate the consensus again. If the
-    consensus taxonomy could only be assigned at ranks above species, the
+    If method == 'full', the function iterates over the length of the ranks
+    list, the first time this list contains all ranks: ['kingdom', 'phylum',
+    'class', 'order', 'family', 'genus', 'species'] and the number of records
+    for each lineage using these ranks is calculated by summing the 'n' column.
+    A percentage is calculated and the dataframe is filtered to only include
+    rows with at least <threshold>%. If the filtered dataframe has only 1 row,
+    this consensus taxonomy is assigned for the BOLD BIN, otherwise the for loop
+    continues by taking away one rank, i.e.: ['kingdom', 'phylum', 'class',
+    'order', 'family', 'genus'] then attemps to calculate the consensus again.
+    If the consensus taxonomy could only be assigned at ranks above species, the
     remaining ranks are given the 'unresolved.' prefix.
+
+    If method == 'rank', then the same as above is performed except that instead
+    of aggregating the entire list of rank labels it starts with 'species' then
+    moves up the ranks.
     """
     # Store the BOLD BIN id
     bin_uri = df["bin_uri"].unique()[0]
@@ -63,7 +165,7 @@ def calculate_consensus(
             group_by = ranks[:i]
         elif method == "rank":
             group_by = ranks[i - 1]
-        _df = cons(df, group_by, threshold)
+        _df = cons(df, group_by, threshold, exclude_missing_data)
         # If the resulting dataframe contains only 1 row, i.e. if only one
         # lineage is above the threshold, use this lineage for the BOLD BIN.
         if _df.shape[0] == 1:
@@ -119,8 +221,14 @@ def worker(arg):
     Helper function allowing more than 1 argument to be passed to the
     calculate_consensus function.
     """
-    df, ranks, threshold, method = arg
-    return calculate_consensus(df=df, ranks=ranks, threshold=threshold, method=method)
+    df, ranks, threshold, method, exclude_missing_data = arg
+    return calculate_consensus(
+        df=df,
+        ranks=ranks,
+        threshold=threshold,
+        method=method,
+        exclude_missing_data=exclude_missing_data,
+    )
 
 
 def load_taxonomy(infile):
@@ -214,6 +322,11 @@ def main():
         help="Method to calculate consensus. If 'full' the number of records is summed to the full lineage which takes into account if higher level ranks differ for each BOLD BIN. If 'rank' the records are summed per rank irrespective of higher ranks, then the full lineage is set to the most frequent lineage with fewest unassigned taxlabels.",
     )
     parser.add_argument(
+        "--exclude_missing_data",
+        action="store_true",
+        help="When calculating consensus, exclude records with missing data",
+    )
+    parser.add_argument(
         "-p", dest="cpus", type=int, default=1, help="Number of cpus to use"
     )
     args = parser.parse_args()
@@ -228,13 +341,15 @@ def main():
                 bin_taxonomy.select("bin_uri").unique().to_series().to_list()
             )
         )
-        sys.stderr.write(f"Matched {existing.shape[0]} BINs from {args.use_existing}.\n")
+        sys.stderr.write(
+            f"Matched {existing.shape[0]} BINs from {args.use_existing}.\n"
+        )
         bin_taxonomy_ambig = bin_taxonomy_ambig.filter(
             ~pl.col("bin_uri").is_in(existing.select("bin_uri").to_series().to_list())
         )
     # Partition the ambiguous BOLD BINs into a list of dataframes
     dataframes = bin_taxonomy_ambig.partition_by("bin_uri")
-    # Set cap on cpus 
+    # Set cap on cpus
     cpus = min(len(dataframes), args.cpus)
     if cpus < args.cpus:
         sys.stderr.write(
@@ -247,7 +362,11 @@ def main():
     # Use the worker function to supply the threshold as an argument
     with get_context("spawn").Pool(cpus) as p:
         consensus_list = p.map(
-            worker, ((df, args.ranks, args.threshold, args.method) for df in dataframes)
+            worker,
+            (
+                (df, args.ranks, args.threshold, args.method, args.exclude_missing_data)
+                for df in dataframes
+            ),
         )
     sys.stderr.write(f"Concatenating results.\n")
     # Concatenate the dataframes in the consensus_list + the unambiguous dataframe
@@ -266,4 +385,16 @@ def main():
             if args.write_existing:
                 existing.write_csv(args.write_existing, separator="\t")
         consensus_df = pl.concat([existing, consensus_df])
-    consensus_df.write_csv(args.outfile, separator="\t")
+    sys.stderr.write("Identifying non-unique parent taxa\n")
+    non_unique = find_non_unique(consensus_df, args.ranks[1:-1])
+    consensus_df.write_csv("consensus.noncleaned.tsv", separator="\t")
+    for key, value in non_unique.items():
+        if len(value) > 0:
+            sys.stderr.write(f"Non-unique taxa at {key}\n")
+            sys.stderr.write(f"{'\n'.join(value)}\n")
+    if any([len(non_unique[x]) for x in non_unique.keys()]) > 0:
+        sys.stderr.write("Cleaning up non-unique taxa\n")
+        cleaned_consensus_df = clean_non_unique_lineages(
+            consensus_df, non_unique, args.ranks[0:-1]
+        )
+    cleaned_consensus_df.write_csv(args.outfile, separator="\t")
