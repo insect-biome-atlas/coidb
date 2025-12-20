@@ -397,4 +397,6 @@ def main():
         cleaned_consensus_df = clean_non_unique_lineages(
             consensus_df, non_unique, args.ranks[0:-1]
         )
-    cleaned_consensus_df.write_csv(args.outfile, separator="\t")
+        cleaned_consensus_df.write_csv(args.outfile, separator="\t")
+    else:
+        consensus_df.write_csv(args.outfile, separator="\t")
