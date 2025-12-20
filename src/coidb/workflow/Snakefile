@@ -15,7 +15,6 @@ localrules:
     extract_input,
     gzip,
     collect_vsearch,
-    download_backbone,
     concat_timestamps,
 
 

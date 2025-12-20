@@ -3,6 +3,10 @@
 # and synonyms prior to calculating consensus taxonomies for BOLD bins.
 
 
+localrules:
+    download_backbone,
+
+
 rule download_backbone:
     """
     This rule downloads the latest GBIF backbone release.
