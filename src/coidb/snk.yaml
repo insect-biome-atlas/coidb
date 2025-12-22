@@ -12,6 +12,11 @@ cli:
     short: "o"
     help: "Folder to store database files in"
     default: "results"
+  account:
+    type: str
+    short: "A"
+    help: "Compute account for SLURM cluster execution"
+    default: ""
   temp_dir:
     type: path
     help: "Folder for temporary files"
