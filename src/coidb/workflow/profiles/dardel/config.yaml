@@ -1,5 +1,4 @@
 default-resources: 
-  slurm_account: <your-slurm-account>
   slurm_partition: shared
   runtime: 60
   mem_mb: 1776
