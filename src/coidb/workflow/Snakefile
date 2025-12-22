@@ -7,6 +7,9 @@ from snakemake.utils import validate
 import os
 import sys
 
+# set default compute account when account is None
+if config["account"] is None:
+    config["account"] = "None"
 
 from coidb import series_to_fasta
 
@@ -129,8 +132,12 @@ rule filter:
     params:
         min_len=config["min_len"],
         input_file=config["input_file"],
+    threads: 4
+    resources:
+        slurm_account=config["account"],
     shell:
         """
+        export POLARS_MAX_THREADS={threads}
         echo "Input data:" >> {output.timestamp}
         echo "  - filename: {params.input_file}" >> {output.timestamp}
         echo "  - extracted filename: {input.tsv}" >> {output.timestamp}
@@ -157,8 +164,12 @@ rule fill_missing:
         tsv=temp(expand("{output_dir}/{{n}}.info.tsv", output_dir=config["output_dir"])),
     log:
         os.path.join(config["output_dir"], "_logs/fill_missing.{n}.log"),
+    threads: 4
+    resources:
+        slurm_account=config["account"],
     shell:
         """
+        export POLARS_MAX_THREADS={threads}
         fill-missing -i {input} -o {output.tsv} 2>{log}
         """
 
@@ -206,8 +217,11 @@ rule calculate_consensus:
             f"-u {input.backbone}" if config["gbif_backbone"] else ""
         ),
     threads: 1
+    resources:
+        slurm_account=config["account"],
     shell:
         """
+        export POLARS_MAX_THREADS={threads}
         consensus-taxonomy -i {input.tsv} -o {output.tsv} \
             {params.bb} -r {params.ranks} -m {params.method} \
             -t {params.threshold} -p {threads} 2>{log}
@@ -290,18 +304,15 @@ rule vsearch:
         id=config["vsearch_identity"],
     group:
         "vsearch"
-    run:
-        # Create a temporary file to hold the sequences for vsearch
-        f = NamedTemporaryFile(mode="w", delete=False)
-        # Extract sequences matching wildcards.bin_uri
-        shell(
-            f"seqkit grep -r -n -p bin_uri:{wildcards.bin_uri} -o {f.name} {input.fasta}"
-        )
-        # Run vsearch on the temporary fasta
-        shell(
-            f"vsearch --cluster_fast {f.name} --id {params.id} --centroids {output.fasta} --threads {threads} 2>{log}"
-        )
-        os.remove(f.name)
+    resources:
+        slurm_account=config["account"],
+    shadow:
+        "minimal"
+    shell:
+        """
+        seqkit grep -r -n -p bin_uri:{wildcards.bin_uri} -o {wildcards.bin_uri}.fasta {input.fasta}
+        vsearch --cluster_fast {wildcards.bin_uri}.fasta --id {params.id} --centroids {output.fasta} --threads {threads} 2>{log}
+        """
 
 
 def get_vsearch_fastas(wildcards):
@@ -390,6 +401,8 @@ rule format_sintax:
         fasta=temp(os.path.join(config["output_dir"], "sintax/coidb.sintax.fasta.gz")),
     log:
         os.path.join(config["output_dir"], "_logs/format_sintax.log"),
+    resources:
+        slurm_account=config["account"],
     shell:
         """
         coidb-format --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} \
@@ -420,6 +433,8 @@ rule format_dada2:
         ),
     log:
         os.path.join(config["output_dir"], "_logs/format_dada2.log"),
+    resources:
+        slurm_account=config["account"],
     shell:
         """
         coidb-format --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} dada2 \
@@ -443,6 +458,8 @@ rule format_qiime2:
         os.path.join(config["output_dir"], "qiime2", "coidb.qiime2.info.tsv.gz"),
     log:
         os.path.join(config["output_dir"], "_logs", "format_qiime2.log"),
+    resources:
+        slurm_account=config["account"],
     shell:
         """
         coidb-format --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} qiime2 \
