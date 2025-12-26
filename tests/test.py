@@ -51,15 +51,15 @@ class Workflow:
         )
         self.clustered_fasta = read_fasta(f"{self.output_dir}/coidb.clustered.fasta.gz")
         self.dada2_addspecies = read_fasta(
-            f"{self.output_dir}/coidb.dada2.addSpecies.fasta.gz"
+            f"{self.output_dir}/dada2/coidb.dada2.addSpecies.fasta.gz"
         )
         self.dada2_toGenus = read_fasta(
-            f"{self.output_dir}/coidb.dada2.toGenus.fasta.gz"
+            f"{self.output_dir}/dada2/coidb.dada2.toGenus.fasta.gz"
         )
         self.dada2_toSpecies = read_fasta(
-            f"{self.output_dir}/coidb.dada2.toSpecies.fasta.gz"
+            f"{self.output_dir}/dada2/coidb.dada2.toSpecies.fasta.gz"
         )
-        self.sintax = read_fasta(f"{self.output_dir}/coidb.sintax.fasta.gz")
+        self.sintax = read_fasta(f"{self.output_dir}/sintax/coidb.sintax.fasta.gz")
 
 
 @pytest.fixture
@@ -171,10 +171,11 @@ def test_files_exist(workflow_runs):
                     f"{output_dir}/coidb.BOLD_BIN.consensus_taxonomy.tsv.gz"
                 ),
                 os.path.exists(f"{output_dir}/coidb.clustered.fasta.gz"),
-                os.path.exists(f"{output_dir}/coidb.dada2.addSpecies.fasta.gz"),
-                os.path.exists(f"{output_dir}/coidb.dada2.toGenus.fasta.gz"),
-                os.path.exists(f"{output_dir}/coidb.dada2.toSpecies.fasta.gz"),
-                os.path.exists(f"{output_dir}/coidb.sintax.fasta.gz"),
+                os.path.exists(f"{output_dir}/dada2/coidb.dada2.addSpecies.fasta.gz"),
+                os.path.exists(f"{output_dir}/dada2/coidb.dada2.toGenus.fasta.gz"),
+                os.path.exists(f"{output_dir}/dada2/coidb.dada2.toSpecies.fasta.gz"),
+                os.path.exists(f"{output_dir}/sintax/coidb.sintax.fasta.gz"),
+                os.path.exists(f"{output_dir}/qiime2/coidb.qiime2.info.tsv.gz"),
             ]
         )
 
