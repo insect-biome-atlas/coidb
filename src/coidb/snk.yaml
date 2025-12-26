@@ -6,7 +6,6 @@ cli:
     type: path
     short: "i"
     help: "Input tar.gz archive dowloaded from BOLD"
-    required: True
   output_dir:
     type: path
     short: "o"
