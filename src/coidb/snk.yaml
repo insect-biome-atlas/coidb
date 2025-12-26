@@ -12,10 +12,11 @@ cli:
     help: "Folder to store database files in"
     default: "results"
   account:
-    type: str
     short: "A"
-    help: "Compute account for SLURM cluster execution"
+    type: string
+    help: "Compute account id for running on SLURM cluster"
     default: ""
+    required: False
   temp_dir:
     type: path
     help: "Folder for temporary files"
@@ -47,6 +48,3 @@ cli:
     type: int
     help: "Minimum length of sequences to include"
     default: 500
-  account:
-    type: str
-    help: "SLURM compute account"
