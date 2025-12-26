@@ -337,53 +337,30 @@ def get_vsearch_fastas(wildcards):
 
 rule collect_vsearch:
     """
-    This rule concatenates all the vsearch clustered fasta files.
+    This rule concatenates all the vsearch clustered fasta files with
+    single-record BIN fastas.
     """
     message:
-        "Collect vsearch output"
+        "Collecting clustered and single-record BIN fastas"
     input:
         fasta=get_vsearch_fastas,
-    output:
-        fasta=temp(
-            os.path.join(config["temp_dir"], "_processed/vsearch_clustered.fasta.gz")
-        ),
-    log:
-        os.path.join(config["output_dir"], "_logs/collect_vsearch.log"),
-    shell:
-        """
-        cat {input.fasta} > {output.fasta} 2>{log}
-        """
-
-
-rule add_to_vsearch:
-    """
-    This rule adds sequences from single-record BINs to the vsearch clustered
-    fasta file.
-    """
-    message:
-        "Adding records to vsearch output"
-    input:
         tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
-        fasta=rules.collect_vsearch.output.fasta,
     output:
         fasta=os.path.join(config["output_dir"], "coidb.clustered.fasta.gz"),
-    run:
-        df = pl.scan_csv(input.tsv, separator="\t", low_memory=True).select(
-            ["processid", "bin_uri", "seq"]
-        )
-        # Collect all BOLD BINs with just 1 record
-        q = (
-            df.group_by("bin_uri").len().filter(pl.col("len") == 1).select("bin_uri")
-        ).collect(engine="streaming")
-        single_record_bins = q["bin_uri"].to_list()
-        # Get records for these bins and write seqs to temporary file
-        f = NamedTemporaryFile(mode="w", delete=False)
-        df.filter(pl.col("bin_uri").is_in(single_record_bins)).with_columns(
-            s=">" + pl.col("processid") + "\n" + pl.col("seq")
-        ).select("s").sink_csv(f.name, include_header=False, quote_style="never")
-        # Concatenate single record bins fasta + vsearch clustered fasta
-        shell("cat {f.name} {input.fasta} | seqkit seq -u | gzip -c > {output.fasta}")
-        os.remove(f.name)
+    log:
+        os.path.join(config["output_dir"], "_logs/collect_vsearch.log"),
+    shadow:
+        "minimal"
+    threads: 4
+    resources:
+        slurm_account=config["account"],
+    shell:
+        """
+        export POLARS_MAX_THREADS={threads}
+        exec &>{log}
+        bold2fasta -i {input.tsv} -o singles.fasta --single --low_memory
+        cat {input.fasta} singles.fasta | gzip -c > {output.fasta}
+        """
 
 
 rule format_sintax:
@@ -394,7 +371,7 @@ rule format_sintax:
     message:
         "Generate SINTAX format fasta file"
     input:
-        fasta=rules.add_to_vsearch.output.fasta,
+        fasta=rules.collect_vsearch.output.fasta,
         tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
         consensus=rules.calculate_consensus.output.tsv,
     output:
@@ -419,7 +396,7 @@ rule format_dada2:
         "Generate DADA2 format fasta files"
     input:
         tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
-        fasta=rules.add_to_vsearch.output.fasta,
+        fasta=rules.collect_vsearch.output.fasta,
         consensus=rules.calculate_consensus.output.tsv,
     output:
         to_genus=temp(
@@ -452,7 +429,7 @@ rule format_qiime2:
         "Generate QIIME2 compatible TSV file"
     input:
         tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
-        fasta=rules.add_to_vsearch.output.fasta,
+        fasta=rules.collect_vsearch.output.fasta,
         consensus=rules.calculate_consensus.output.tsv,
     output:
         os.path.join(config["output_dir"], "qiime2", "coidb.qiime2.info.tsv.gz"),
