@@ -254,32 +254,18 @@ checkpoint multi_record_bins:
         tsv=temp(os.path.join(config["temp_dir"], "_processed/multi_record_bins.tsv")),
     log:
         os.path.join(config["output_dir"], "_logs/multi_record_bins.log"),
-    run:
-        df = pl.scan_csv(input.tsv, separator="\t", low_memory=True).select(
-            ["processid", "bin_uri", "seq"]
-        )
-        # Collect all BOLD BINs with > 1 record
-        q = (
-            df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
-            .group_by("bin_uri")
-            .len()
-            .filter(pl.col("len") > 1)
-            .select("bin_uri")
-        ).collect(engine="streaming")
-        # Write textfile
-        q.write_csv(output.tsv, separator="\t")
-        multi_record_bins = q.to_series().to_list()
-        # Write sequences to file
-        df.filter(pl.col("bin_uri").is_in(multi_record_bins)).with_columns(
-            s=">"
-            + pl.col("processid")
-            + " bin_uri:"
-            + pl.col("bin_uri")
-            + "\n"
-            + pl.col("seq")
-        ).select("s").sink_csv(output.fasta, include_header=False, quote_style="never")
-        # Generate fasta index
-        shell("seqkit faidx {output.fasta} 2>{log}")
+    resources:
+        slurm_account=config["account"],
+    threads: 4
+    shell:
+        """
+        exec &>{log}
+        export POLARS_MAX_THREADS={threads}
+        bold2fasta -i {input.tsv} -o {output.fasta} --multi --low_memory
+        echo "bin_uri" > {output.tsv}
+        grep '>' {output.fasta} | sed 's/>//g' >>{output.tsv}
+        seqkit faidx {output.fasta}
+        """
 
 
 rule vsearch:
