@@ -16,6 +16,7 @@ coidb-format = "coidb.scripts.format:main"
 consensus-taxonomy = "coidb.scripts.consensus_taxonomy:main"
 parse-backbone = "coidb.scripts.parse_backbone:main"
 match-names = "coidb.scripts.match_names:main"
+bold2fasta = "coidb.scripts.bold2fasta:main"
 
 [project.urls]
 Documentation = "https://github.com/insect-biome-atlas/coidb#readme"
