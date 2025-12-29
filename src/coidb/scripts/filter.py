@@ -46,10 +46,7 @@ def filter_tsv(infile, outfile, min_len=0):
         & (pl.col("nuc_basecount") >= min_len)
         & (
             (pl.col("bin_uri").str.contains("BOLD:[A-Z0-9]+"))
-            | (
-                (pl.col("bin_uri") == "None")
-                & (pl.col("kingdom").is_in(["Bacteria", "Archaea"]))
-            )
+            | ((pl.col("kingdom").is_in(["Bacteria", "Archaea"])))
         )
     )
     transform_seq = (
