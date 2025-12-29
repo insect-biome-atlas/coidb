@@ -23,6 +23,7 @@ localrules:
 
 wildcard_constraints:
     n="backbone|coidb",
+    suffix="tsv|fasta",
 
 
 def all_input(wildcards):
@@ -37,7 +38,6 @@ def all_input(wildcards):
             "qiime2/coidb.qiime2.info.tsv.gz",
             "coidb.BOLD_BIN.consensus_taxonomy.tsv.gz",
             "coidb.info.tsv.gz",
-            "coidb.info.unique-lineages.tsv.gz",
             "timestamps.txt",
         ],
     )
@@ -57,11 +57,11 @@ rule all:
 
 rule gzip:
     message:
-        "Compressing {wildcards.f}.tsv"
+        "Compressing {wildcards.f}.{wildcards.suffix}"
     input:
-        "{f}.tsv",
+        "{f}.{suffix}",
     output:
-        "{f}.tsv.gz",
+        "{f}.{suffix}.gz",
     shell:
         """
         gzip -c {input} > {output}
@@ -158,11 +158,11 @@ rule fill_missing:
     This rule fills in missing ranks in taxonomic dataframes.
     """
     message:
-        "Filling missing ranks for file {wildcards.n}.info.tsv"
+        "Filling missing ranks for {wildcards.n} data"
     input:
         fill_missing_input,
     output:
-        tsv=temp(expand("{output_dir}/{{n}}.info.tsv", output_dir=config["output_dir"])),
+        tsv=temp(os.path.join(config["temp_dir"], "{n}.info.fill-missing.tsv")),
     log:
         os.path.join(config["output_dir"], "_logs/fill_missing.{n}.log"),
     threads: 4
@@ -183,11 +183,11 @@ rule fix_nonunique:
     message:
         "Fixing non-unique lineages"
     input:
-        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
+        tsv=rules.fill_missing.output.tsv,
     output:
-        tsv=temp(os.path.join(config["output_dir"], "coidb.info.unique-lineages.tsv")),
+        tsv=temp(os.path.join(config["output_dir"], "{n}.info.tsv")),
     log:
-        os.path.join(config["output_dir"], "_logs/fix_nonunique.log"),
+        os.path.join(config["output_dir"], "_logs/fix_nonunique.{n}.log"),
     threads: 4
     resources:
         slurm_account=config["account"],
@@ -211,7 +211,7 @@ def consensus_input(wildcards):
     is also passed.
     """
     input = {}
-    input["tsv"] = os.path.join(config["output_dir"], "coidb.info.unique-lineages.tsv")
+    input["tsv"] = os.path.join(config["output_dir"], "coidb.info.tsv")
     if config["gbif_backbone"]:
         input["backbone"] = (os.path.join(config["output_dir"], "backbone.info.tsv"),)
     return input
@@ -261,7 +261,7 @@ checkpoint batch_multi_record_bins:
     argument.
     """
     input:
-        tsv=os.path.join(config["output_dir"], "coidb.info.unique-lineages.tsv"),
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
     output:
         directory(os.path.join(config["temp_dir"], "_batch")),
     log:
@@ -318,7 +318,7 @@ rule vsearch:
             vsearch --cluster_fast $f --id {params.id} --centroids $f.centroids --threads {threads}
             rm $f
         done
-        cat *.centroids | seqkit replace -p '\\|.+' > {output.fasta}
+        cat *.centroids | seqkit replace -p '\\|' -r ' ' > {output.fasta}
         """
 
 
@@ -346,7 +346,7 @@ rule collect_vsearch:
         "Collecting clustered and single-record BIN fastas"
     input:
         fasta=get_vsearch_fastas,
-        tsv=os.path.join(config["output_dir"], "coidb.info.unique-lineages.tsv"),
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
     output:
         fasta=os.path.join(config["output_dir"], "coidb.clustered.fasta.gz"),
     log:
@@ -374,10 +374,10 @@ rule format_sintax:
         "Generate SINTAX format fasta file"
     input:
         fasta=rules.collect_vsearch.output.fasta,
-        tsv=os.path.join(config["output_dir"], "coidb.info.unique-lineages.tsv"),
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        fasta=temp(os.path.join(config["output_dir"], "sintax/coidb.sintax.fasta.gz")),
+        fasta=temp(os.path.join(config["output_dir"], "sintax/coidb.sintax.fasta")),
     log:
         os.path.join(config["output_dir"], "_logs/format_sintax.log"),
     resources:
@@ -397,18 +397,18 @@ rule format_dada2:
     message:
         "Generate DADA2 format fasta files"
     input:
-        tsv=os.path.join(config["output_dir"], "coidb.info.unique-lineages.tsv"),
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
         fasta=rules.collect_vsearch.output.fasta,
         consensus=rules.calculate_consensus.output.tsv,
     output:
         to_genus=temp(
-            os.path.join(config["output_dir"], "dada2/coidb.dada2.toGenus.fasta.gz")
+            os.path.join(config["output_dir"], "dada2/coidb.dada2.toGenus.fasta")
         ),
         to_species=temp(
-            os.path.join(config["output_dir"], "dada2/coidb.dada2.toSpecies.fasta.gz")
+            os.path.join(config["output_dir"], "dada2/coidb.dada2.toSpecies.fasta")
         ),
         assign_species=temp(
-            os.path.join(config["output_dir"], "dada2/coidb.dada2.addSpecies.fasta.gz")
+            os.path.join(config["output_dir"], "dada2/coidb.dada2.addSpecies.fasta")
         ),
     log:
         os.path.join(config["output_dir"], "_logs/format_dada2.log"),
@@ -430,11 +430,11 @@ rule format_qiime2:
     message:
         "Generate QIIME2 compatible TSV file"
     input:
-        tsv=os.path.join(config["output_dir"], "coidb.info.unique-lineages.tsv"),
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
         fasta=rules.collect_vsearch.output.fasta,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        os.path.join(config["output_dir"], "qiime2", "coidb.qiime2.info.tsv.gz"),
+        os.path.join(config["output_dir"], "qiime2", "coidb.qiime2.info.tsv"),
     log:
         os.path.join(config["output_dir"], "_logs", "format_qiime2.log"),
     resources:
