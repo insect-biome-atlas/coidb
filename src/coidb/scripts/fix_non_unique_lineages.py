@@ -116,6 +116,7 @@ def main():
     )
     args = parser.parse_args()
     df = pl.scan_csv(args.infile, separator="\t")
+    id_col = df.collect_schema().names()[0]
     sys.stderr.write(f"Finding non-unique lineages in {args.infile}\n")
     non_unique = find_non_unique(df, args.ranks)
     dups = df.filter(
@@ -138,9 +139,7 @@ def main():
     pl.concat(
         [
             df.filter(
-                ~pl.col("processid").is_in(
-                    unique_df.select("processid").to_series().to_list()
-                )
+                ~pl.col(id_col).is_in(unique_df.select(id_col).to_series().to_list())
             ),
             unique_df.lazy(),
         ]
