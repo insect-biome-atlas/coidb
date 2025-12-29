@@ -21,7 +21,7 @@ def read_records(f):
         for line in fhin:
             line = line.rstrip()
             if line.startswith(">"):
-                records.append(line.lstrip(">"))
+                records.append(line.lstrip(">").split(" ")[0])
     return records
 
 
