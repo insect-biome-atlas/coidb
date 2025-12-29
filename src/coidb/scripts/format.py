@@ -10,61 +10,47 @@ def format_dada2(df, outfile_toGenus, outfile_toSpecies, outfile_assignSpecies):
     """
     Generate files compatible with DADA2
     """
-    # Generate a fasta up to the genus level
-    togenus = (
-        ">"
-        + df["kingdom"]
+    df.with_columns(
+        s=">"
+        + pl.col("kingdom")
         + ";"
-        + df["phylum"]
+        + pl.col("phylum")
         + ";"
-        + df["class"]
+        + pl.col("class")
         + ";"
-        + df["order"]
+        + pl.col("order")
         + ";"
-        + df["family"]
+        + pl.col("family")
         + ";"
-        + df["genus"]
-        + ";"
-        + "\n"
-        + df["seq"]
-    )
-    if outfile_toGenus.endswith(".gz"):
-        compress = True
-    else:
-        compress = False
-    series_to_fasta(togenus, outfile_toGenus, compress=compress)
+        + pl.col("genus")
+        + ";\n"
+        + pl.col("seq")
+    ).select("s").sink_csv(outfile_toGenus, include_header=False, quote_style="never")
     # Generate a fasta up to the species level
-    tospecies = (
-        ">"
-        + df["kingdom"]
+    df.with_columns(
+        s=">"
+        + pl.col("kingdom")
         + ";"
-        + df["phylum"]
+        + pl.col("phylum")
         + ";"
-        + df["class"]
+        + pl.col("class")
         + ";"
-        + df["order"]
+        + pl.col("order")
         + ";"
-        + df["family"]
+        + pl.col("family")
         + ";"
-        + df["genus"]
+        + pl.col("genus")
         + ";"
-        + df["species"]
-        + ";"
-        + "\n"
-        + df["seq"]
-    )
-    if outfile_toSpecies.endswith(".gz"):
-        compress = True
-    else:
-        compress = False
-    series_to_fasta(tospecies, outfile_toSpecies, compress=compress)
+        + pl.col("species")
+        + ";\n"
+        + pl.col("seq")
+    ).select("s").sink_csv(outfile_toSpecies, include_header=False, quote_style="never")
     # Generate a fasta with only species
-    assignspecies = ">" + df["processid"] + " " + df["species"] + "\n" + df["seq"]
-    if outfile_assignSpecies.endswith(".gz"):
-        compress = True
-    else:
-        compress = False
-    series_to_fasta(assignspecies, outfile_assignSpecies, compress=compress)
+    df.with_columns(
+        s=">" + pl.col("processid") + " " + pl.col("species") + "\n" + pl.col("seq")
+    ).select("s").sink_csv(
+        outfile_assignSpecies, include_header=False, quote_style="never"
+    )
 
 
 def format_sintax(df, outfile):
@@ -72,71 +58,68 @@ def format_sintax(df, outfile):
     Output a fasta file compatible with SINTAX
     Here the BOLD BIN is set as 'strain' ('t:' prefix)
     """
-    fasta_series = (
-        ">"
-        + df["processid"]
+    df.with_columns(
+        s=">"
+        + pl.col("processid")
         + ";tax=k:"
-        + df["kingdom"]
+        + pl.col("kingdom")
         + ",p:"
-        + df["phylum"]
+        + pl.col("phylum")
         + ",c:"
-        + df["class"]
+        + pl.col("class")
         + ",o:"
-        + df["order"]
+        + pl.col("order")
         + ",f:"
-        + df["family"]
+        + pl.col("family")
         + ",g:"
-        + df["genus"]
+        + pl.col("genus")
         + ",s:"
-        + df["species"]
+        + pl.col("species")
         + ",t:"
-        + df["bin_uri"]
+        + pl.col("bin_uri")
         + "\n"
-        + df["seq"]
-    )
-    if outfile.endswith(".gz"):
-        compress = True
-    else:
-        compress = False
-    series_to_fasta(fasta_series, outfile, compress=compress)
+        + pl.col("seq")
+    ).select("s").sink_csv(outfile, include_header=False, quote_style="never")
+
 
 def format_qiime2(df, outfile):
     """
     Output a tab separated taxonomy file with columns 'Taxon' and 'Feature ID'
     which can be used with QIIME2
     """
-    if outfile.endswith(".gz"):
-        compress = True
-    else:
-        compress = False
-    df = (
-        # add rank prefix
-        df.with_columns(
-            [
-                ("k__"+pl.col("kingdom")).alias("kingdom"),
-                ("p__"+pl.col("phylum")).alias("phylum"),
-                ("c__"+pl.col("class")).alias("class"),
-                ("o__"+pl.col("order")).alias("order"),
-                ("f__"+pl.col("family")).alias("family"),
-                ("g__"+pl.col("genus")).alias("genus"),
-                ("s__"+pl.col("species")).alias("species"),
-                ("t__"+pl.col("bin_uri")).alias("bin_uri")
-            ]
+    df.with_columns(
+        [
+            ("k__" + pl.col("kingdom")).alias("kingdom"),
+            ("p__" + pl.col("phylum")).alias("phylum"),
+            ("c__" + pl.col("class")).alias("class"),
+            ("o__" + pl.col("order")).alias("order"),
+            ("f__" + pl.col("family")).alias("family"),
+            ("g__" + pl.col("genus")).alias("genus"),
+            ("s__" + pl.col("species")).alias("species"),
+            ("t__" + pl.col("bin_uri")).alias("bin_uri"),
+        ]
         # concatenate rank columns
-        ).with_columns(
-            pl.concat_str(
-                ["kingdom","phylum","class","order","family","genus","species","bin_uri"],
-                separator="; "
-            ).alias("Taxon")
-        ).select(["processid","Taxon"]).rename({'processid': 'Feature ID'})
-    # write to file
+    ).with_columns(
+        pl.concat_str(
+            [
+                "kingdom",
+                "phylum",
+                "class",
+                "order",
+                "family",
+                "genus",
+                "species",
+                "bin_uri",
+            ],
+            separator="; ",
+        ).alias("Taxon")
+    ).select(
+        ["processid", "Taxon"]
+    ).rename(
+        {"processid": "Feature ID"}
+    ).sink_csv(
+        outfile, separator="\t"
     )
-    if compress:
-        with gz.open(outfile, 'wb') as fhout:
-            df.write_csv(fhout, separator="\t")
-    else:
-        with open(outfile, 'w') as fhout:
-            df.write_csv(fhout, separator="\t")
 
 
 def main():
@@ -182,10 +165,10 @@ def main():
     )
     qiime2_parser = subparsers.add_parser("qiime2", help="QIIME2 format options")
     qiime2_parser.add_argument(
-        "--qiime2_outfile", 
-        type=str, 
-        required=True, 
-        help="TSV file with taxonomic info for use with QIIME2"
+        "--qiime2_outfile",
+        type=str,
+        required=True,
+        help="TSV file with taxonomic info for use with QIIME2",
     )
     args = parser.parse_args()
     if args.fasta:
@@ -197,13 +180,13 @@ def main():
             pl.scan_csv(args.tsv, separator="\t")
             .filter(pl.col("processid").is_in(records))
             .select(["processid", "bin_uri", "seq"])
-        ).collect(engine="streaming")
+        )
         # Read consensus taxonomy for BOLD BINs
-        consensus = pl.read_csv(args.consensus, separator="\t")
+        consensus = pl.scan_csv(args.consensus, separator="\t")
         # Merge dataframe with consensus, adding BOLD BIN taxonomy to records
         df = consensus.join(df, on="bin_uri")
     else:
-        df = pl.scan_csv(args.tsv, separator="\t").collect(engine="streaming")
+        df = pl.scan_csv(args.tsv, separator="\t")
     # Write the requested format
     if args.format == "sintax":
         format_sintax(df, args.outfile)
