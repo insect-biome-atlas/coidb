@@ -297,8 +297,8 @@ rule vsearch:
         ),
     log:
         expand(
-            "{tempdir}/_logs/vsearch_logs/batch_{{batch_id}}.log",
-            tempdir=config["temp_dir"],
+            "{output_dir}/_logs/vsearch_logs/batch_{{batch_id}}.log",
+            output_dir=config["output_dir"],
         ),
     threads: 1
     params:
@@ -316,6 +316,7 @@ rule vsearch:
         for f in batch_{wildcards.batch_id}.*.fasta; 
         do 
             vsearch --cluster_fast $f --id {params.id} --centroids $f.centroids --threads {threads}
+            rm $f
         done
         cat *.centroids | seqkit replace -p '|.+' > {output.fasta}
         """

@@ -85,6 +85,17 @@ The general syntax for running `coidb` is:
 coidb run <arguments>
 ```
 
+A typical run could look like this:
+
+```bash
+coidb run -i data/BOLD_Public.04-Jul-2025.tar.gz -o results -c 4
+```
+
+In this example, the file `data/BOLD_Public.04-Jul-2025.tar.gz` was downloaded
+from [boldsystems.org/](https://boldsystems.org/) (read more about how to obtain
+the input data under [Obtain data](#obtain-data)]), output is stored in the
+`results` directory and 4 threads are used for running `coidb`.
+
 To see a list of all arguments, run `coidb run -h`. The available arguments are listed below:
 
 ```bash
@@ -98,6 +109,7 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
 --vsearch-identity    FLOAT       Identity at which to cluster sequences per BIN [default: 1.0]
 --ranks               TEXT        Ranks to use for calculating consensus and generating fastas [default: kingdom, phylum, class, order, family, genus, species]
 --min-len             INTEGER     Minimum length of sequences to include [default: 500]
+--batch-size          INTEGER     Number of BOLD BINs per batch for running vsearch [default: 50000]
 ```
 
 * The `--input-file` `-i` argument must point to a BOLD tar archive that you
@@ -130,6 +142,10 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
   calculate the consensus taxonomy.
 * The `--min-len` argument sets a minimum length for sequences to include in the
   final output.
+* The `--batch-size` argument sets the number of BOLD bins to process with
+  vsearch in parallell. This is used to reduce the the size of the workflow
+  graph by splitting the input sequences into batches with `batch-size` number
+  of BOLD bins per file.
 
 In addition to these command line arguments there are some arguments that define how `coidb` runs on your system and which are similar to how you typically interact with Snakemake workflows:
 
@@ -163,7 +179,10 @@ The coidb package uses public barcode reference libraries from [BOLD](https://be
 4. Use the link to download the data package which will be named `BOLD_Public.<dd>-<Mmm>-<YYYY>.tar.gz`, for example `BOLD_Public.20-Jun-2025.tar.gz`.
 
 > [!TIP]
-> To download via the command line you can copy the Download link instead of clicking it, then use `wget` or `curl` to download directly to a file of your choice. For example, to download the data package to a directory called `data/` you could run:
+> To download via the command line you can copy the Download link instead of
+> clicking it, then use `wget` or `curl` to download directly to a file of your
+> choice. For example, to download the data package to a directory called
+> `data/` you could run:
 > ```bash
 > mkdir data
 > wget -O data/BOLD_Public.20-Jun-2025.tar.gz <copied download link>
@@ -174,7 +193,10 @@ The coidb package uses public barcode reference libraries from [BOLD](https://be
 > curl -o data/BOLD_Public.20-Jun-2025.tar.gz <copied download link>
 > ```
 
-The downloaded file can now be used as input to `coidb` by pointing to it with the `--input-file` argument, or by setting `input_file: <path-to-downloaded-tar.gz file>` in a [configuration file](#using-a-configuration-file)
+The downloaded file can now be used as input to `coidb` by pointing to it with
+the `--input-file` argument, or by setting `input_file:
+<path-to-downloaded-tar.gz file>` in a [configuration
+file](#using-a-configuration-file)
 
 BOLD citation:
 
@@ -191,7 +213,8 @@ coidb config > config.yml
 This creates a new file `config.yml` with the following default parameters:
 
 ```yaml
-account: null
+account: ''
+batch_size: 50000
 consensus_method: rank
 consensus_threshold: 80
 gbif_backbone: false
@@ -213,9 +236,8 @@ vsearch_identity: 1.0
 You can then edit this file and use it with coidb like so:
 
 ```bash
-coidb run --config config.yml
+coidb run --config config.yml <additional arguments>
 ```
-
 
 ### Cluster execution
 
@@ -242,14 +264,6 @@ use this profile by passing `--profile my-slurm-profile` to the `coidb run`
 command.
 
 ...
-
-## Running coidb
-
-The general syntax for running `coidb` is:
-
-```bash
-coidb run --input-file </path/to/input> --
-```
 
 ### Configuration
 
