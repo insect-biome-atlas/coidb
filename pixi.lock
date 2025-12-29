@@ -1174,7 +1174,7 @@ packages:
   - graphviz >=14.0.4,<15
   license: MIT
   input:
-    hash: 6d71667b1c76b189497dd632b630cb1b3a30d1c00a5bbd0c44668c68df30e4ce
+    hash: dbb1742e8706ba568bc03e050fa9c4c60242dd7769bcee7fe93e8f8f3f23936e
     globs:
     - pyproject.toml
 - conda: https://prefix.dev/conda-forge/linux-64/coin-or-cbc-2.10.12-h00e76a6_2.conda
