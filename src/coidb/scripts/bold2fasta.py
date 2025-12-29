@@ -92,6 +92,11 @@ def main():
         else:
             bins = args.bins
         df = specific_bins(df, bins)
-    df.with_columns(s=">" + pl.col(args.id_col) + "\n" + pl.col(args.seq_col)).select(
-        "s"
-    ).sink_csv(args.outfile, include_header=False, quote_style="never")
+    df.with_columns(
+        s=">"
+        + pl.col(args.id_col)
+        + " bin_uri:"
+        + pl.col("bin_uri")
+        + "\n"
+        + pl.col(args.seq_col)
+    ).select("s").sink_csv(args.outfile, include_header=False, quote_style="never")
