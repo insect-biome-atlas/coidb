@@ -4,6 +4,34 @@ from argparse import ArgumentParser
 import polars as pl
 
 
+def single_record_bins(df):
+    single_record_bins = (
+        (df.group_by("bin_uri").len().filter(pl.col("len") == 1).select("bin_uri"))
+        .collect(engine="streaming")
+        .to_series()
+        .to_list()
+    )
+    return df.filter(pl.col("bin_uri").is_in(single_record_bins))
+
+
+def multi_record_bins(df):
+    multi_record_bins = (
+        df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
+        .group_by("bin_uri")
+        .len()
+        .filter(pl.col("len") > 1)
+        .select("bin_uri")
+        .collect(engine="streaming")
+        .to_series()
+        .to_list()
+    )
+    return df.filter(pl.col("bin_uri").is_in(multi_record_bins))
+
+
+def specific_bins(df, bins):
+    return df.filter(pl.col("bin_uri").is_in(bins))
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument(
@@ -21,6 +49,10 @@ def main():
     )
     parser.add_argument(
         "--multi", action="store_true", help="Only output multi-record BOLD bins"
+    )
+    parser.add_argument("--bins", nargs="+", help="Filter file to only these BOLD bins")
+    parser.add_argument(
+        "--bins_file", type=str, help="Filter file to only BOLD bins in file"
     )
     parser.add_argument(
         "--id_col",
@@ -44,25 +76,22 @@ def main():
         "bin_uri", args.id_col, args.seq_col
     )
     if args.single:
-        single_record_bins = (
-            (df.group_by("bin_uri").len().filter(pl.col("len") == 1).select("bin_uri"))
-            .collect(engine="streaming")
-            .to_series()
-            .to_list()
-        )
-        df = df.filter(pl.col("bin_uri").is_in(single_record_bins))
+        df = single_record_bins(df)
     elif args.multi:
-        multi_record_bins = (
-            df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
-            .group_by("bin_uri")
-            .len()
-            .filter(pl.col("len") > 1)
-            .select("bin_uri")
-            .collect(engine="streaming")
-            .to_series()
-            .to_list()
-        )
-        df = df.filter(pl.col("bin_uri").is_in(multi_record_bins))
+        df = multi_record_bins(df)
+    elif args.bins or args.bins_file:
+        if args.bins_file:
+            bins = (
+                pl.scan_csv(args.bins_file, separator="\t", has_header=False)
+                .filter(pl.col("column_1").str.starts_with("BOLD:"))
+                .select("column_1")
+                .collect()
+                .to_series()
+                .to_list()
+            )
+        else:
+            bins = args.bins
+        df = specific_bins(df, bins)
     df.with_columns(s=">" + pl.col(args.id_col) + "\n" + pl.col(args.seq_col)).select(
         "s"
     ).sink_csv(args.outfile, include_header=False, quote_style="never")
