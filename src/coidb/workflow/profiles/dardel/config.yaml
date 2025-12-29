@@ -16,7 +16,7 @@ set-resources:
   calculate_consensus:
     mem_mb: 14208
   vsearch:
-    runtime: 600
+    runtime: 300
     mem_mb: 7104
   add_to_vsearch:
     mem_mb: 3552
