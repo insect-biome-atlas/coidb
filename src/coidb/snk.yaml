@@ -48,3 +48,7 @@ cli:
     type: int
     help: "Minimum length of sequences to include"
     default: 500
+  batch_size:
+    type: int
+    help: "Number of BOLD bins to run vsearch for at a time"
+    default: 50000
