@@ -238,7 +238,9 @@ rule calculate_consensus:
         ranks=config["ranks"],
         method=config["consensus_method"],
         bb=lambda wildcards, input: (
-            f"-u {input.backbone}" if config["gbif_backbone"] else ""
+            f"-u {input.backbone} --write_existing {config['output_dir']}/coidb.BOLD_BIN.consensus_taxonomy.from-backbone.tsv"
+            if config["gbif_backbone"]
+            else ""
         ),
     threads: 1
     resources:
