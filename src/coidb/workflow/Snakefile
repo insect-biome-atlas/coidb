@@ -37,6 +37,7 @@ def all_input(wildcards):
             "qiime2/coidb.qiime2.info.tsv.gz",
             "coidb.BOLD_BIN.consensus_taxonomy.tsv.gz",
             "coidb.info.tsv.gz",
+            "coidb.info.unique-lineages.tsv.gz",
             "timestamps.txt",
         ],
     )
@@ -56,7 +57,7 @@ rule all:
 
 rule gzip:
     message:
-        "Compressing {wildcards.f}"
+        "Compressing {wildcards.f}.tsv"
     input:
         "{f}.tsv",
     output:
@@ -302,8 +303,6 @@ rule vsearch:
     threads: 1
     params:
         id=config["vsearch_identity"],
-    group:
-        "vsearch"
     resources:
         slurm_account=config["account"],
     shadow:
