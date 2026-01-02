@@ -436,7 +436,7 @@ rule format_qiime2:
         fasta=rules.collect_vsearch.output.fasta,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        os.path.join(config["output_dir"], "qiime2", "coidb.qiime2.info.tsv"),
+        temp(os.path.join(config["output_dir"], "qiime2", "coidb.qiime2.info.tsv")),
     log:
         os.path.join(config["output_dir"], "_logs", "format_qiime2.log"),
     resources:
