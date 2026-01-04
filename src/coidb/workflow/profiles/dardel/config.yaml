@@ -18,8 +18,11 @@ set-resources:
     runtime: 30
   calculate_consensus:
     mem_mb: 14208
-  vsearch:
     runtime: 120
+  batch_multi_record_bins:
+    runtime: 120
+  vsearch:
+    runtime: 600
     mem_mb: 7104
   add_to_vsearch:
     mem_mb: 3552
