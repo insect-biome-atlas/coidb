@@ -264,6 +264,7 @@ def main():
     sys.stderr.write(
         f"Calculating consensus taxonomies for {len(dataframes)} non-unique BINS using {cpus} cpus.\n"
     )
+    sys.stderr.write("Ignoring taxlabels with missing data.\n")
     # Apply the consensus function to each dataframe in the dataframes list
     # Use the worker function to supply the threshold as an argument
     with get_context("spawn").Pool(cpus) as p:
