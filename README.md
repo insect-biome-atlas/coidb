@@ -398,3 +398,28 @@ the BIN would then become:
 | kingdom | phylum | class | order | family | genus | species |
 |---------|--------|-------|-------|--------|-------|---------|
 | K | P | C | O | F | G | S|
+
+> [!Note]
+> In previous versions of `coidb` the [GBIF backbone
+> taxonomy](https://www.gbif.org/dataset/d7dddbf4-2cf0-4f39-9b2a-bb099caae36c)
+> was used to set taxonomy of BOLD BINs. However, because the backbone data is
+> not up to date we do not recommend using this option at the moment. The
+> functionality is still kept so you can run `coidb` with the command line flag
+> `--gbif-backbone` if you wish.
+
+
+### Clustering
+
+For BOLD BINs with more than 1 record after filtering sequences are clustered
+using `vsearch` at the identity threshold specified with `--vsearch-identity`.
+BINs with only 1 record are then added to the clustered results to generate the
+final `coidb.clustered.fasta.gz` output file.
+
+### Formatting
+
+Finally, the consensus taxonomy and the filtered sequences are used to generate
+reference files compatible with the SINTAX algorithm (using `vsearch --sintax
+queries.fasta --db coidb.sintax.fasta ...`), [DADA2 taxonomic
+assignment](https://benjjneb.github.io/dada2/assign.html) (using files under
+`<results-dir>/dada2`) and [QIIME2 feature-classifier
+plugin](https://amplicon-docs.qiime2.org/en/latest/references/plugins/feature-classifier.html#q2-plugin-feature-classifier).
