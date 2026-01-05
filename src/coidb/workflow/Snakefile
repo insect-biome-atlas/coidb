@@ -242,6 +242,11 @@ rule calculate_consensus:
             if config["gbif_backbone"]
             else ""
         ),
+        exclude_missing=(
+            "--exclude_missing_data"
+            if config["consensus_exclude_missing_data"]
+            else ""
+        ),
     threads: 1
     resources:
         slurm_account=config["account"],
@@ -250,7 +255,7 @@ rule calculate_consensus:
         export POLARS_MAX_THREADS={threads}
         consensus-taxonomy -i {input.tsv} -o {output.tsv} \
             {params.bb} -r {params.ranks} -m {params.method} \
-            -t {params.threshold} -p {threads} 2>{log}
+            {params.exclude_missing} -t {params.threshold} -p {threads} 2>{log}
         """
 
 

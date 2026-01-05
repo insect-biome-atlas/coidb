@@ -36,6 +36,10 @@ cli:
       - rank
       - full
     default: rank
+  consensus_exclude_missing_data:
+    type: boolean
+    help: "Exclude labels with missing data when calculating consensus taxonomy"
+    default: False
   vsearch_identity:
     type: float
     help: "Identity at which to cluster sequences per BIN"
