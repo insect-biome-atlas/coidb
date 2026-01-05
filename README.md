@@ -309,7 +309,10 @@ the input file you used, while the `_processed/` directory contains _e.g._ the
 
 ## How it works
 
-Firstly, the input file is extracted and the TSV file with taxonomic information and sequence data for each record is identified. This TSV file is then filtered by:
+### Filtering
+Firstly, the input file is extracted and the TSV file with taxonomic information
+and sequence data for each record is identified. This TSV file is then filtered
+by:
 
 1. Selecting a useful subset of columns
 2. Only keeping records with `COI-5P` in the `marker_code` column.
@@ -319,72 +322,79 @@ Firstly, the input file is extracted and the TSV file with taxonomic information
 6. Removing sequences with remaining gaps
 7. Removing sequences with non DNA characters.
 
-The filtered TSV file is then processed to fill in missing values for taxonomic ranks. Ranks with missing data is filled with the lowest assigned taxonomic label, suffixed with `_X`. For example:
+### Filling missing data
 
-| BOLD BIN     | kingdom   | phylum          | class | order       | family | genus | species |
-|--------------|-----------|-----------------|-------|-------------|--------|-------|---------|
-| BOLD:ACX1129 | Animalia  | Platyhelminthes | NaN   | Polycladida | NaN    | NaN   | NaN     |
-| BOLD:ACX6548 | Chromista | Ochrophyta      | NaN   | NaN         | NaN    | NaN   | NaN     |
+The filtered TSV file is then processed to fill in missing values for taxonomic
+ranks. Ranks with missing data is filled with the lowest assigned taxonomic
+label, suffixed with `_X`. For example:
 
-becomes:
-
-| BOLD BIN     | kingdom   | phylum          | class             | order         | family         | genus           | species          |
-|--------------|-----------|-----------------|-------------------|---------------|----------------|-----------------|------------------|
-| BOLD:ACX1129 | Animalia  | Platyhelminthes | Platyhelminthes_X | Polycladida   | Polycladida_X  | Polycladida_XX  | Polycladida_XXX  |
-| BOLD:ACX6548 | Chromista | Ochrophyta      | Ochrophyta_X      | Ochrophyta_XX | Ochrophyta_XXX | Ochrophyta_XXXX | Ochrophyta_XXXXX |
-
-#### Taxonomy
-The taxonomic information obtained from GBIF is then parsed in order to extract
-species names to BOLD BINs. This is done by:
-1. find all BOLD BINs with a taxonomic assignment at genus level, these likely have
-species names assigned from GBIF (see methods for species assignment [here](https://www.mdpi.com/2076-2607/8/12/1910/htm))
-2. obtain all parent taxonomic ids for BOLD BINs from step 1 and use these to 
-look up the species name for the BOLD BINs. 
-3. For BOLD BINs where species name look-up failed in step 2, try to obtain 
-species name using the [GBIF API](https://www.gbif.org/developer/summary).
-
-The taxonomic data is then searched for rows where missing values for ranks are 
-filled with the last known higher level rank, suffixed with `_X`. For instance,
-
-| BOLD BIN     | kingdom   | phylum          | class | order       | family | genus | species |
-|--------------|-----------|-----------------|-------|-------------|--------|-------|---------|
-| BOLD:ACX1129 | Animalia  | Platyhelminthes | NaN   | Polycladida | NaN    | NaN   | NaN     |
-| BOLD:ACX6548 | Chromista | Ochrophyta      | NaN   | NaN         | NaN    | NaN   | NaN     |
+| processid    | kingdom   | phylum          | class | order       | family | genus | species | bin_uri      |
+|--------------|-----------|-----------------|-------|-------------|--------|-------|---------|--------------|
+| DUTCH124-19  | Animalia  | Platyhelminthes | None  | Polycladida | None   |  None |  None   | BOLD:ACC8697 |
+| AACTA1367-20 | Animalia  | Arthropoda      | None  |  None       | None   |  None |  None   | BOLD:AED1280 |
 
 becomes:
 
-| BOLD BIN     | kingdom   | phylum          | class             | order         | family         | genus           | species          |
-|--------------|-----------|-----------------|-------------------|---------------|----------------|-----------------|------------------|
-| BOLD:ACX1129 | Animalia  | Platyhelminthes | Platyhelminthes_X | Polycladida   | Polycladida_X  | Polycladida_XX  | Polycladida_XXX  |
-| BOLD:ACX6548 | Chromista | Ochrophyta      | Ochrophyta_X      | Ochrophyta_XX | Ochrophyta_XXX | Ochrophyta_XXXX | Ochrophyta_XXXXX |
+| processid    | kingdom   | phylum          | class | order       | family | genus | species | bin_uri      |
+|--------------|-----------|-----------------|-------|-------------|--------|-------|---------|--------------|
+| DUTCH124-19  | Animalia  | Platyhelminthes | Platyhelminthes_X  | Polycladida | Polycladida_X   |  Polycladida_XX |  Polycladida_XXX   | BOLD:ACC8697 |
+| AACTA1367-20 | Animalia  | Arthropoda      | Arthropoda_X  |  Arthropoda_XX       | Arthropoda_XXX   |  Arthropoda_XXXX |  Arthropoda_XXXXX   | BOLD:AED1280 |
 
-As you can see, an `X` is appended for each downstream rank with a missing assignment.
+### Fix non-unique taxa
 
-BOLD BINs are then screened for cases where there are more than 1 unique parent 
-lineage for the same taxonomic assignment. For example, the following taxonomic 
-information may be found for BOLD BINs with assignment 'Aphaenogaster' at the
-genus level.
+Some records in the BOLD data may have the same taxonomic labels at a specific
+rank, but with different labels for parent ranks. Take for example the
+`Hemineura` genus where records may have these conflicting labels for higher
+ranks:
 
-| kingdom  | phylym     | class       | order         | family        | genus         |
-|----------|------------|-------------|---------------|---------------|---------------|
-| Animalia | Animalia_X | Animalia_XX | Animalia_XXX  | Animalia_XXXX | Aphaenogaster |
-| Animalia | Arthropoda | Insecta     | Hymenoptera   | Formicidae    | Aphaenogaster |               
+| kingdom | phylum | class | order | family | genus |
+|---------|--------|-------|-------|--------|-------|
+| Animalia | Arthropoda | Insecta | Psocodea | Elipsocidae | Hemineura |
+| Protista | Rhodophyta | Florideophyceae | Ceramiales | Delesseriaceae | Hemineura |
 
-A check is first made to see if unique parent lineages can be obtained by 
-removing BINs that only have missing assignments for parent ranks up to and including 
-phylum. If that doesn't result in a unique parent lineage, the conflicting rank
-assignments are prefixed with the lowest assigned parent rank. 
+This is dealt with by either removing BOLD BINs that lack taxonomic information
+for higher ranks, or by prefixing the non-unique rank with the label of the higher taxonomic rank. In the example above, this would generate:
 
-For example, BOLD BINs with genus level assignment 'Paralagenidium' have both 
-`k_Chromista;p_Oomycota;c_Peronosporea;o_Peronosporales;f_Pythiaceae` and 
-`k_Chromista;p_Ochrophyta;c_Ochrophyta_X;o_Ochrophyta_XX;f_Ochrophyta_XXX` as parent
-lineages. Since these conflicts cannot be resolved by removing BINs (all BINs have
-assignments at phylum level), the taxa labels at genus and species level are prefixed
-with either `Pythiaceae_` or `Ochrophyta_XXX_`.
+| kingdom | phylum | class | order | family | genus |
+|---------|--------|-------|-------|--------|-------|
+| Animalia | Arthropoda | Insecta | Psocodea | Elipsocidae | Elipsocidae_Hemineura |
+| Protista | Rhodophyta | Florideophyceae | Ceramiales | Delesseriaceae | Delesseriaceae_Hemineura |
 
-#### Sequence processing
-Sequences are then processed to remove gap characters and leading and trailing 
-`N`s. After this, any sequences with remaining non-standard characters are removed.
-Sequences are then clustered at 100% identity using [vsearch](https://github.com/torognes/vsearch) 
-(Rognes _et al._ 2016). This clustering is done separately for sequences assigned 
-to each BIN ID.   
+### Consensus taxonomy
+
+After these steps, a consensus taxonomy is calculated for BOLD BINs by taking
+into account the taxonomic information for all records in each BIN. For example, a BOLD BIN with records labelled:
+
+| kingdom | phylum | class | order | family | genus | species |
+|---------|--------|-------|-------|--------|-------|---------|
+|  K |  P |  C |  O |  F |  G |  S |
+|  K |  P |  C |  O |  F |  G |  S |
+|  K |  P |  C |  O |  F |  G |  S |
+|  K |  P |  C |  O |  F |  G |  S |
+|  K |  P |  C |  O |  F |  G |  S2 |
+|  K |  P |  C |  O |  F |  G |  G_X |
+|  K |  P |  C |  O |  F |  G |  G_X |
+|  K |  P |  C |  O |  F |  G |  G_X |
+|  K |  P |  C |  O |  F |  G |  G_X |
+
+This BIN has 4 records labelled species `S`, 1 record labelled species `S2` and
+4 records with missing species labels (these were given the genus label suffixed
+with `_X`). Starting from species, 40% of records are labelled species `S`, 10%
+are labelled `S2` and 40% have ambiguous labels. Using a consensus threshold of
+80% (the default) we see that no consensus can be reached for this BIN at
+species level. Moving one step up in the hierarchy however gets us 100% of
+records labelled genus `G`. Consequently this BIN will receive a consensus
+taxonomy:
+
+| kingdom | phylum | class | order | family | genus | species |
+|---------|--------|-------|-------|--------|-------|---------|
+| K | P | C | O | F | G | unresolved.G |
+
+Using the command line argument `--consensus-exclude-missing-data` all the
+records with `G_X` at rank=species would be ignored in which case there are 80%
+records with species `S` and 20% with species `S2`. The consensus taxonomy for
+the BIN would then become:
+
+| kingdom | phylum | class | order | family | genus | species |
+|---------|--------|-------|-------|--------|-------|---------|
+| K | P | C | O | F | G | S|
