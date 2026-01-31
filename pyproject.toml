@@ -19,6 +19,7 @@ match-names = "coidb.scripts.match_names:main"
 bold2fasta = "coidb.scripts.bold2fasta:main"
 batch-split-bins = "coidb.scripts.batch_split_bins:main"
 fix-nonunique-lineages = "coidb.scripts.fix_non_unique_lineages:main"
+coidb-stats = "coidb.scripts.stats:main"
 
 [project.urls]
 Documentation = "https://github.com/insect-biome-atlas/coidb#readme"

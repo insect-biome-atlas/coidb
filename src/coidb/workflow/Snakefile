@@ -38,6 +38,7 @@ def all_input(wildcards):
             "qiime2/coidb.qiime2.info.tsv.gz",
             "coidb.BOLD_BIN.consensus_taxonomy.tsv.gz",
             "coidb.info.tsv.gz",
+            "coidb.stats.txt",
             "timestamps.txt",
         ],
     )
@@ -369,6 +370,30 @@ rule collect_vsearch:
         exec &>{log}
         bold2fasta -i {input.tsv} -o singles.fasta --single --low_memory
         cat {input.fasta} singles.fasta | gzip -c > {output.fasta}
+        """
+
+
+rule stats:
+    """
+    Generate statistics on created database
+    """
+    message:
+        "Generating statistics"
+    input:
+        fasta=rules.collect_vsearch.output.fasta,
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv.gz"),
+        consensus=rules.calculate_consensus.output,
+    output:
+        os.path.join(config["output_dir"], "coidb.stats.txt"),
+    log:
+        os.path.join(config["output_dir"], "_logs/stats.log"),
+    resources:
+        slurm_account=config["account"],
+    threads: 1
+    shell:
+        """
+        export POLARS_MAX_THREADS={threads}
+        coidb-stats --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} > {output} 2>{log}
         """
 
 
