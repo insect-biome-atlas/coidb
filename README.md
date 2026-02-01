@@ -411,14 +411,19 @@ taxonomy:
 |---------|--------|-------|-------|--------|-------|---------|
 | K | P | C | O | F | G | unresolved.G |
 
-Using the command line argument `--consensus-exclude-missing-data` all the
-records with `G_X` at rank=species would be ignored in which case there are 80%
-records with species `S` and 20% with species `S2`. The consensus taxonomy for
-the BIN would then become:
+The consensus generated with this approach is tagged with `inclNA` in the output
+files described above (see [Output](#output)).
+
+Ignoring all records with `G_X` at rank=species means that there are 80% records
+with species `S` and 20% with species `S2`. The consensus taxonomy for the BIN
+would then become:
 
 | kingdom | phylum | class | order | family | genus | species |
 |---------|--------|-------|-------|--------|-------|---------|
 | K | P | C | O | F | G | S|
+
+This is what the `exclNA` tag refers to in the output files described above (see
+[Output](#output)).
 
 > [!Note]
 > In previous versions of `coidb` the [GBIF backbone
