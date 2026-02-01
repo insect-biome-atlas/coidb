@@ -135,7 +135,6 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
 --gbif-backbone                   Use GBIF backbone to infer consensus taxonomy for BOLD BINs
 --consensus-threshold INTEGER     Threshold (in %) when calculating consensus taxonomy [default: 80]
 --consensus-method    [rank|full] Method to use when calculating consensus [default: rank]
---consensus_exclude_missing_data  Exclude labels with missing data when calculating consensus taxonomy
 --vsearch-identity    FLOAT       Identity at which to cluster sequences per BIN [default: 1.0]
 --ranks               TEXT        Ranks to use for calculating consensus and generating fastas [default: kingdom, phylum, class, order, family, genus, species]
 --min-len             INTEGER     Minimum length of sequences to include [default: 500]
@@ -164,10 +163,6 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
   the BOLD BIN. With `full`, a consensus is applied by taking into account the
   parent lineages at each rank, so starting with all labels from
   kingdom->species, then kingdom->genus etc.
-* The `--consensus_exclude_missing_data` argument modifies calculation of taxonomic
-  consensus for BOLD bins by ignoring labels with missing data. This means that 
-  taxonomic labels with `_X` are ignored. This can help resolve taxonomies but 
-  can also lead to biases.
 * The `--vsearch-identity` argument specifies the identity threshold to use when
   clustering sequences with vsearch. The default is `1.0` meaning sequences are
   clustered at 100% identity.
@@ -268,6 +263,8 @@ command.
 
 ## Output
 
+### Primary output files
+
 The primary outputs from a run are placed in the directory set by the `--output-dir` command line argument (default: `results/`). These include:
 
 * `coidb.clustered.fasta.gz`: A fasta file with sequences clustered at whatever
@@ -281,21 +278,28 @@ The primary outputs from a run are placed in the directory set by the `--output-
 * `coidb.info.tsv.gz`: This TSV file contains sequence and taxonomic information
   for all records kept after filtering.
 
-* `coidb.BOLD_BIN.consensus_taxonomy.tsv.gz`: This TSV file contains the
+* `coidb.BOLD_BIN.consensus_taxonomy.exclNA.tsv.gz`: This TSV file contains the
   calculated consensus taxonomy of BOLD BINs. If a consensus could not be
   reached at a certain taxonomic rank, the taxonomic label at that rank is
   prefixed with 'unresolved.' followed by the label of the lowest consensus
-  rank.
+  rank. The `exclNA` part of the filename means that taxonomic labels
+  corresponding to missing data (those suffixed with `_X`) were ignored when
+  calculating the consensus.
 
-* `sintax/coidb.sintax.fasta.gz`: This fasta file is compatible with the SINTAX classification tool implemented in [vsearch](https://github.com/torognes/vsearch) and has headers with the format:
+* `coidb.BOLD_BIN.consensus_taxonomy.inclNA.tsv.gz`: Same as above, but here all
+  taxonomic labels were taken into account when calculating the consensus (even
+  labels corresponding to missing data).
 
-```
->BPALB370-17;tax=k:Animalia,p:Arthropoda,c:Insecta,o:Lepidoptera,f:Lycaenidae,g:Thersamonia,s:Thersamonia_X,t:BOLD:AAF7702
-```
-
-* `dada2/coidb.dada2.toGenus.fasta.gz`, `dada2/coidb.dada2.toSpecies.fasta.gz` and `dada2/coidb.dada2.addSpecies.fasta.gz`: These fasta files are compatible with the `assignTaxonomy` and `addSpecies` functions from [DADA2](https://benjjneb.github.io/dada2/assign.html).
-
-* `qiime2/coidb.qiime2.info.tsv.gz`: This TSV file can be used with QIIME2 to create a taxonomy artifact for use with the [feature-classifier](https://amplicon-docs.qiime2.org/en/latest/references/plugins/feature-classifier.html#q2-plugin-feature-classifier) plugin. Unzip the file then run `qiime tools import --type 'FeatureData[Taxonomy]' --input-format TSVTaxonomyFormat --input-path coidb.qiime2.info.tsv --output-path taxonomy.qza`. The `coidb.clustered.fasta.gz` file can be used to import sequences with `qiime tools import --type 'FeatureData[Sequence]' --input-path coidb.clustered.fasta --output-path seqs.qza`.
+> [!IMPORTANT]
+> The consensus taxonomy files described above are used to create the SINTAX,
+> DADA2 and QIIME2 compatible reference files. This means that there are two
+> versions of each of these files, one tagged with `exclNA` and one with
+> `inclNA`. Of these two versions the `exclNA` file will contain more resolved
+> taxonomies and will allow the taxonomic classifiers to assign sequences with
+> higher resolution. However, there is a higher risk that these taxonomies
+> contain errors due to incorrectly added taxonomic information in the BOLD
+> database. As such, the `inclNA` version represents a more conservative (but
+> less resolved) version of the database.
 
 ### Log files
 
@@ -311,6 +315,18 @@ the way.
 For example, the `_extract/` directory contains the raw TSV file extracted from
 the input file you used, while the `_processed/` directory contains _e.g._ the
 `data.filtered.tsv` file which is the output from the filtering step of coidb.
+
+### SINTAX, DADA2 and QIIME2 references
+
+* `sintax/coidb.sintax.{exclNA,inclNA}.fasta.gz`: These fasta files are compatible with the SINTAX classification tool implemented in [vsearch](https://github.com/torognes/vsearch) and have headers with the format:
+
+```
+>BPALB370-17;tax=k:Animalia,p:Arthropoda,c:Insecta,o:Lepidoptera,f:Lycaenidae,g:Thersamonia,s:Thersamonia_X,t:BOLD:AAF7702
+```
+
+* `dada2/coidb.dada2.toGenus.{exclNA,inclNA}.fasta.gz`, `dada2/coidb.dada2.toSpecies.{exclNA,inclNA}.fasta.gz` and `dada2/coidb.dada2.addSpecies.{exclNA,inclNA}.fasta.gz`: These fasta files are compatible with the `assignTaxonomy` and `addSpecies` functions from [DADA2](https://benjjneb.github.io/dada2/assign.html).
+
+* `qiime2/coidb.qiime2.info.{exclNA,inclNA}.tsv.gz`: These TSV files can be used with QIIME2 to create a taxonomy artifact for use with the [feature-classifier](https://amplicon-docs.qiime2.org/en/latest/references/plugins/feature-classifier.html#q2-plugin-feature-classifier) plugin. Unzip the file then run `qiime tools import --type 'FeatureData[Taxonomy]' --input-format TSVTaxonomyFormat --input-path coidb.qiime2.inclNA.info.tsv --output-path taxonomy.qza`. The `coidb.clustered.fasta.gz` file can be used to import sequences with `qiime tools import --type 'FeatureData[Sequence]' --input-path coidb.clustered.fasta --output-path seqs.qza`.
 
 ## How it works
 
