@@ -76,6 +76,13 @@ def calculate_consensus(
         # lineage is above the threshold, use this lineage for the BOLD BIN.
         if _df.shape[0] == 1:
             break
+    # If no consensus is found at any rank the _df dataframe will be empty
+    # so then return a dataframe with all ranks as 'unresolved'
+    if _df.height == 0:
+        data = {"bin_uri": bin_uri}
+        for rank in ranks:
+            data[rank] = "unresolved"
+        return pl.DataFrame(data).select(["bin_uri"] + ranks)
     # Get the most resolved rank
     last_known_rank = [x for x in ranks if x in _df.columns][-1]
     # Get the name of the taxa of the most resolved rank
@@ -264,7 +271,8 @@ def main():
     sys.stderr.write(
         f"Calculating consensus taxonomies for {len(dataframes)} non-unique BINS using {cpus} cpus.\n"
     )
-    sys.stderr.write("Ignoring taxlabels with missing data.\n")
+    if args.exclude_missing_data:
+        sys.stderr.write("Ignoring taxlabels with missing data.\n")
     # Apply the consensus function to each dataframe in the dataframes list
     # Use the worker function to supply the threshold as an argument
     with get_context("spawn").Pool(cpus) as p:
