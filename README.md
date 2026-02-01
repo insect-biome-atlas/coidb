@@ -135,6 +135,7 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
 --gbif-backbone                   Use GBIF backbone to infer consensus taxonomy for BOLD BINs
 --consensus-threshold INTEGER     Threshold (in %) when calculating consensus taxonomy [default: 80]
 --consensus-method    [rank|full] Method to use when calculating consensus [default: rank]
+--consensus_exclude_missing_data  Exclude labels with missing data when calculating consensus taxonomy
 --vsearch-identity    FLOAT       Identity at which to cluster sequences per BIN [default: 1.0]
 --ranks               TEXT        Ranks to use for calculating consensus and generating fastas [default: kingdom, phylum, class, order, family, genus, species]
 --min-len             INTEGER     Minimum length of sequences to include [default: 500]
@@ -163,6 +164,10 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
   the BOLD BIN. With `full`, a consensus is applied by taking into account the
   parent lineages at each rank, so starting with all labels from
   kingdom->species, then kingdom->genus etc.
+* The `--consensus_exclude_missing_data` argument modifies calculation of taxonomic
+  consensus for BOLD bins by ignoring labels with missing data. This means that 
+  taxonomic labels with `_X` are ignored. This can help resolve taxonomies but 
+  can also lead to biases.
 * The `--vsearch-identity` argument specifies the identity threshold to use when
   clustering sequences with vsearch. The default is `1.0` meaning sequences are
   clustered at 100% identity.
