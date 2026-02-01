@@ -445,7 +445,7 @@ final `coidb.clustered.fasta.gz` output file.
 
 Finally, the consensus taxonomy and the filtered sequences are used to generate
 reference files compatible with the SINTAX algorithm (using `vsearch --sintax
-queries.fasta --db coidb.sintax.fasta ...`), [DADA2 taxonomic
+queries.fasta --db coidb.sintax.inclNA.fasta.gz ...`), [DADA2 taxonomic
 assignment](https://benjjneb.github.io/dada2/assign.html) (using files under
 `<results-dir>/dada2`) and [QIIME2 feature-classifier
 plugin](https://amplicon-docs.qiime2.org/en/latest/references/plugins/feature-classifier.html#q2-plugin-feature-classifier).
