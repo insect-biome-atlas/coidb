@@ -1,34 +1,28 @@
-FROM continuumio/miniconda3:latest
-
-LABEL maintainer="John Sundh" email=john.sundh@nbis.se
-LABEL description="Docker image for coidb tool"
+FROM ghcr.io/prefix-dev/pixi:0.60.0-bullseye-slim AS build
 
 # Use bash as shell
 SHELL ["/bin/bash", "-c"]
 
-# Set workdir
+WORKDIR /app
+
+COPY pixi.toml pixi.lock README.md pyproject.toml /app/
+COPY src /app
+
+RUN pixi build
+
+
+FROM condaforge/mambaforge:24.9.2-0 AS install
+
+# Use bash as shell
+SHELL ["/bin/bash", "-c"]
+
 WORKDIR /analysis
 
-# Set tmpdir
-ENV TMPDIR="/scratch"
-RUN mkdir $TMPDIR
+COPY --from=build /app/*.conda /app/coidb.conda
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && apt-get clean
+RUN conda install -c bioconda -c conda-forge snk-cli python && \
+    conda install /app/coidb.conda && \
+    conda clean -ay && \
+    rm /app/coidb.conda
 
-# Add environment file
-COPY environment.yml .
-
-# Install environment into base
-RUN conda install -c conda-forge mamba pip=22 && \
-    mamba env update -n base -f environment.yml && \
-    conda clean -a
-
-# Add python files
-COPY src LICENSE MANIFEST.in pyproject.toml setup.cfg ./
-
-# Install package
-RUN python -m pip install . --no-deps -vv
-
-# Run workflow
-ENTRYPOINT ["coidb", "-j", "1"]
+ENTRYPOINT [ "coidb" ]

@@ -24,7 +24,7 @@ backend = { name = "pixi-build-python", version = "0.4.*" }
 hatchling = "==1.27.0"
 
 [package.run-dependencies]
-snk-cli = "==0.7.2"
+snk-cli = "*"
 snakemake = ">=9"
 python = "*"
 vsearch = "*"
@@ -32,8 +32,8 @@ polars = "*"
 seqkit = "*"
 snakemake-executor-plugin-slurm = "*"
 pygbif = "*"
-tqdm = ">=4.67.1,<5"
-graphviz = ">=14.0.4,<15"
+tqdm = "*"
+graphviz = "*"
 
 [tasks]
 test = "pytest tests/test.py"

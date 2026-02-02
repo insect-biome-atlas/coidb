@@ -1161,7 +1161,7 @@ packages:
   build: pyh4616a5c_0
   subdir: noarch
   depends:
-  - snk-cli ==0.7.2
+  - snk-cli
   - snakemake >=9
   - python
   - python *
@@ -1170,11 +1170,11 @@ packages:
   - seqkit
   - snakemake-executor-plugin-slurm
   - pygbif
-  - tqdm >=4.67.1,<5
-  - graphviz >=14.0.4,<15
+  - tqdm
+  - graphviz
   license: MIT
   input:
-    hash: dbb1742e8706ba568bc03e050fa9c4c60242dd7769bcee7fe93e8f8f3f23936e
+    hash: 4a1bc81d778f1fa4fc4b4a649c165c4c3eb6f8c363ddfc789eff1ecfde045d1d
     globs:
     - pyproject.toml
 - conda: https://prefix.dev/conda-forge/linux-64/coin-or-cbc-2.10.12-h00e76a6_2.conda
