@@ -263,6 +263,8 @@ command.
 
 ## Output
 
+### Primary output files
+
 The primary outputs from a run are placed in the directory set by the `--output-dir` command line argument (default: `results/`). These include:
 
 * `coidb.clustered.fasta.gz`: A fasta file with sequences clustered at whatever
@@ -276,21 +278,28 @@ The primary outputs from a run are placed in the directory set by the `--output-
 * `coidb.info.tsv.gz`: This TSV file contains sequence and taxonomic information
   for all records kept after filtering.
 
-* `coidb.BOLD_BIN.consensus_taxonomy.tsv.gz`: This TSV file contains the
+* `coidb.BOLD_BIN.consensus_taxonomy.exclNA.tsv.gz`: This TSV file contains the
   calculated consensus taxonomy of BOLD BINs. If a consensus could not be
   reached at a certain taxonomic rank, the taxonomic label at that rank is
   prefixed with 'unresolved.' followed by the label of the lowest consensus
-  rank.
+  rank. The `exclNA` part of the filename means that taxonomic labels
+  corresponding to missing data (those suffixed with `_X`) were ignored when
+  calculating the consensus.
 
-* `sintax/coidb.sintax.fasta.gz`: This fasta file is compatible with the SINTAX classification tool implemented in [vsearch](https://github.com/torognes/vsearch) and has headers with the format:
+* `coidb.BOLD_BIN.consensus_taxonomy.inclNA.tsv.gz`: Same as above, but here all
+  taxonomic labels were taken into account when calculating the consensus (even
+  labels corresponding to missing data).
 
-```
->BPALB370-17;tax=k:Animalia,p:Arthropoda,c:Insecta,o:Lepidoptera,f:Lycaenidae,g:Thersamonia,s:Thersamonia_X,t:BOLD:AAF7702
-```
-
-* `dada2/coidb.dada2.toGenus.fasta.gz`, `dada2/coidb.dada2.toSpecies.fasta.gz` and `dada2/coidb.dada2.addSpecies.fasta.gz`: These fasta files are compatible with the `assignTaxonomy` and `addSpecies` functions from [DADA2](https://benjjneb.github.io/dada2/assign.html).
-
-* `qiime2/coidb.qiime2.info.tsv.gz`: This TSV file can be used with QIIME2 to create a taxonomy artifact for use with the [feature-classifier](https://amplicon-docs.qiime2.org/en/latest/references/plugins/feature-classifier.html#q2-plugin-feature-classifier) plugin. Unzip the file then run `qiime tools import --type 'FeatureData[Taxonomy]' --input-format TSVTaxonomyFormat --input-path coidb.qiime2.info.tsv --output-path taxonomy.qza`. The `coidb.clustered.fasta.gz` file can be used to import sequences with `qiime tools import --type 'FeatureData[Sequence]' --input-path coidb.clustered.fasta --output-path seqs.qza`.
+> [!IMPORTANT]
+> The consensus taxonomy files described above are used to create the SINTAX,
+> DADA2 and QIIME2 compatible reference files. This means that there are two
+> versions of each of these files, one tagged with `exclNA` and one with
+> `inclNA`. Of these two versions the `exclNA` file will contain more resolved
+> taxonomies and will allow the taxonomic classifiers to assign sequences with
+> higher resolution. However, there is a higher risk that these taxonomies
+> contain errors due to incorrectly added taxonomic information in the BOLD
+> database. As such, the `inclNA` version represents a more conservative (but
+> less resolved) version of the database.
 
 ### Log files
 
@@ -306,6 +315,18 @@ the way.
 For example, the `_extract/` directory contains the raw TSV file extracted from
 the input file you used, while the `_processed/` directory contains _e.g._ the
 `data.filtered.tsv` file which is the output from the filtering step of coidb.
+
+### SINTAX, DADA2 and QIIME2 references
+
+* `sintax/coidb.sintax.{exclNA,inclNA}.fasta.gz`: These fasta files are compatible with the SINTAX classification tool implemented in [vsearch](https://github.com/torognes/vsearch) and have headers with the format:
+
+```
+>BPALB370-17;tax=k:Animalia,p:Arthropoda,c:Insecta,o:Lepidoptera,f:Lycaenidae,g:Thersamonia,s:Thersamonia_X,t:BOLD:AAF7702
+```
+
+* `dada2/coidb.dada2.toGenus.{exclNA,inclNA}.fasta.gz`, `dada2/coidb.dada2.toSpecies.{exclNA,inclNA}.fasta.gz` and `dada2/coidb.dada2.addSpecies.{exclNA,inclNA}.fasta.gz`: These fasta files are compatible with the `assignTaxonomy` and `addSpecies` functions from [DADA2](https://benjjneb.github.io/dada2/assign.html).
+
+* `qiime2/coidb.qiime2.info.{exclNA,inclNA}.tsv.gz`: These TSV files can be used with QIIME2 to create a taxonomy artifact for use with the [feature-classifier](https://amplicon-docs.qiime2.org/en/latest/references/plugins/feature-classifier.html#q2-plugin-feature-classifier) plugin. Unzip the file then run `qiime tools import --type 'FeatureData[Taxonomy]' --input-format TSVTaxonomyFormat --input-path coidb.qiime2.inclNA.info.tsv --output-path taxonomy.qza`. The `coidb.clustered.fasta.gz` file can be used to import sequences with `qiime tools import --type 'FeatureData[Sequence]' --input-path coidb.clustered.fasta --output-path seqs.qza`.
 
 ## How it works
 
@@ -390,14 +411,19 @@ taxonomy:
 |---------|--------|-------|-------|--------|-------|---------|
 | K | P | C | O | F | G | unresolved.G |
 
-Using the command line argument `--consensus-exclude-missing-data` all the
-records with `G_X` at rank=species would be ignored in which case there are 80%
-records with species `S` and 20% with species `S2`. The consensus taxonomy for
-the BIN would then become:
+The consensus generated with this approach is tagged with `inclNA` in the output
+files described above (see [Output](#output)).
+
+Ignoring all records with `G_X` at rank=species means that there are 80% records
+with species `S` and 20% with species `S2`. The consensus taxonomy for the BIN
+would then become:
 
 | kingdom | phylum | class | order | family | genus | species |
 |---------|--------|-------|-------|--------|-------|---------|
 | K | P | C | O | F | G | S|
+
+This is what the `exclNA` tag refers to in the output files described above (see
+[Output](#output)).
 
 > [!Note]
 > In previous versions of `coidb` the [GBIF backbone
@@ -419,7 +445,7 @@ final `coidb.clustered.fasta.gz` output file.
 
 Finally, the consensus taxonomy and the filtered sequences are used to generate
 reference files compatible with the SINTAX algorithm (using `vsearch --sintax
-queries.fasta --db coidb.sintax.fasta ...`), [DADA2 taxonomic
+queries.fasta --db coidb.sintax.inclNA.fasta.gz ...`), [DADA2 taxonomic
 assignment](https://benjjneb.github.io/dada2/assign.html) (using files under
 `<results-dir>/dada2`) and [QIIME2 feature-classifier
 plugin](https://amplicon-docs.qiime2.org/en/latest/references/plugins/feature-classifier.html#q2-plugin-feature-classifier).

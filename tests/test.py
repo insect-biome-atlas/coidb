@@ -47,19 +47,19 @@ class Workflow:
         self.returncode = run_workflow(self.config).returncode
         self.info = read_df(f"{self.output_dir}/coidb.info.tsv.gz")
         self.consensus = read_df(
-            f"{self.output_dir}/coidb.BOLD_BIN.consensus_taxonomy.tsv.gz"
+            f"{self.output_dir}/coidb.BOLD_BIN.consensus_taxonomy.exclNA.tsv.gz"
         )
         self.clustered_fasta = read_fasta(f"{self.output_dir}/coidb.clustered.fasta.gz")
         self.dada2_addspecies = read_fasta(
-            f"{self.output_dir}/dada2/coidb.dada2.addSpecies.fasta.gz"
+            f"{self.output_dir}/dada2/coidb.dada2.addSpecies.exclNA.fasta.gz"
         )
         self.dada2_toGenus = read_fasta(
-            f"{self.output_dir}/dada2/coidb.dada2.toGenus.fasta.gz"
+            f"{self.output_dir}/dada2/coidb.dada2.toGenus.exclNA.fasta.gz"
         )
         self.dada2_toSpecies = read_fasta(
-            f"{self.output_dir}/dada2/coidb.dada2.toSpecies.fasta.gz"
+            f"{self.output_dir}/dada2/coidb.dada2.toSpecies.exclNA.fasta.gz"
         )
-        self.sintax = read_fasta(f"{self.output_dir}/sintax/coidb.sintax.fasta.gz")
+        self.sintax = read_fasta(f"{self.output_dir}/sintax/coidb.sintax.exclNA.fasta.gz")
 
 
 @pytest.fixture
@@ -80,8 +80,8 @@ def taxdata():
             "class": ["Insecta"] * 3,
             "order": ["Lepidoptera"] * 3,
             "family": ["Geometridae", "Geometridae", "Lepidoptera_X"],
-            "genus": ["Arhodia", "Arhodia", "Lepidoptera_XX"],
-            "species": ["Arhodia lasiocamparia", "Arhodia AH03", "Arhodia AH03"],
+            "genus": ["Arhodia-X", "Arhodia", "Lepidoptera_XX"],
+            "species": ["Arhodia AH03", "Arhodia AH03", "Lepidoptera_XXX"],
             "n": [2, 6, 2],
             "bin_uri": ["test"] * 3,
         }
@@ -91,37 +91,81 @@ def taxdata():
 def test_consensus_taxonomy(taxdata):
     ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
     from coidb.scripts import consensus_taxonomy
-
+    # with 'full' method all ranks up to the current are used so for taxdata the
+    # full method should resolve neither species nor genus
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=80, method="full"
+            taxdata, ranks=ranks, threshold=80, method="full", exclude_missing_data=False,
         )
         .select("species")
         .item()
-        == "unresolved.Arhodia"
+        == "unresolved.Geometridae"
     )
-
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=80, method="rank"
+            taxdata, ranks=ranks, threshold=80, method="full", exclude_missing_data=False,
+        )
+        .select("genus")
+        .item()
+        == "unresolved.Geometridae"
+    )
+    assert (
+        consensus_taxonomy.calculate_consensus(
+            taxdata, ranks=ranks, threshold=80, method="full", exclude_missing_data=False,
+        )
+        .select("family")
+        .item()
+        == "Geometridae"
+    )
+    # raising the threshold to 90 should resolve family with method='full' only
+    # if missing data is ignored
+    assert (
+        consensus_taxonomy.calculate_consensus(
+            taxdata, ranks=ranks, threshold=90, method="full", exclude_missing_data=True,
+        )
+        .select("family")
+        .item()
+        == "Geometridae"
+    )
+    assert (
+        consensus_taxonomy.calculate_consensus(
+            taxdata, ranks=ranks, threshold=90, method="full", exclude_missing_data=False,
+        )
+        .select("family")
+        .item()
+        == "unresolved.Lepidoptera"
+    )
+    # with 'rank' method, there should be a consensus at species because 8/10
+    # records have 'Arhodia AH03' already at species
+    assert (
+        consensus_taxonomy.calculate_consensus(
+            taxdata, ranks=ranks, threshold=80, method="rank", exclude_missing_data=False,
         )
         .select("species")
         .item()
         == "Arhodia AH03"
     )
-
+    # raising the threshold to 90 should resolve species only if missing data is
+    # excluded, otherwise only order should be resolved
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=80, method="rank"
+            taxdata, ranks=ranks, threshold=90, method="rank", exclude_missing_data=True,
         )
-        .select("genus")
+        .select("species")
         .item()
-        == "Arhodia"
+        == "Arhodia AH03"
     )
-
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=90, method="rank"
+            taxdata, ranks=ranks, threshold=90, method="rank", exclude_missing_data=False,
+        )
+        .select("species")
+        .item()
+        == "unresolved.Lepidoptera"
+    )
+    assert (
+        consensus_taxonomy.calculate_consensus(
+            taxdata, ranks=ranks, threshold=90, method="rank", exclude_missing_data=False,
         )
         .select("genus")
         .item()
@@ -129,31 +173,26 @@ def test_consensus_taxonomy(taxdata):
     )
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=90, method="full"
+            taxdata, ranks=ranks, threshold=90, method="rank", exclude_missing_data=False,
         )
-        .select("genus")
+        .select("family")
         .item()
         == "unresolved.Lepidoptera"
     )
-
+    assert (
+        consensus_taxonomy.calculate_consensus(
+            taxdata, ranks=ranks, threshold=90, method="rank", exclude_missing_data=False,
+        )
+        .select("order")
+        .item()
+        == "Lepidoptera"
+    )
     ranks.pop()
 
     assert (
-        consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=80, method="full"
-        )
-        .select("genus")
-        .item()
-        == "Arhodia"
-    )
-
-    assert (
-        consensus_taxonomy.calculate_consensus(
+        "species" not in consensus_taxonomy.calculate_consensus(
             taxdata, ranks=ranks, threshold=80, method="rank"
-        )
-        .select("genus")
-        .item()
-        == "Arhodia"
+        ).columns
     )
 
 
@@ -168,14 +207,22 @@ def test_files_exist(workflow_runs):
             [
                 os.path.exists(f"{output_dir}/coidb.info.tsv.gz"),
                 os.path.exists(
-                    f"{output_dir}/coidb.BOLD_BIN.consensus_taxonomy.tsv.gz"
+                    f"{output_dir}/coidb.BOLD_BIN.consensus_taxonomy.exclNA.tsv.gz"
+                ),
+                os.path.exists(
+                    f"{output_dir}/coidb.BOLD_BIN.consensus_taxonomy.inclNA.tsv.gz"
                 ),
                 os.path.exists(f"{output_dir}/coidb.clustered.fasta.gz"),
-                os.path.exists(f"{output_dir}/dada2/coidb.dada2.addSpecies.fasta.gz"),
-                os.path.exists(f"{output_dir}/dada2/coidb.dada2.toGenus.fasta.gz"),
-                os.path.exists(f"{output_dir}/dada2/coidb.dada2.toSpecies.fasta.gz"),
-                os.path.exists(f"{output_dir}/sintax/coidb.sintax.fasta.gz"),
-                os.path.exists(f"{output_dir}/qiime2/coidb.qiime2.info.tsv.gz"),
+                os.path.exists(f"{output_dir}/dada2/coidb.dada2.addSpecies.exclNA.fasta.gz"),
+                os.path.exists(f"{output_dir}/dada2/coidb.dada2.addSpecies.inclNA.fasta.gz"),
+                os.path.exists(f"{output_dir}/dada2/coidb.dada2.toGenus.exclNA.fasta.gz"),
+                os.path.exists(f"{output_dir}/dada2/coidb.dada2.toGenus.inclNA.fasta.gz"),
+                os.path.exists(f"{output_dir}/dada2/coidb.dada2.toSpecies.exclNA.fasta.gz"),
+                os.path.exists(f"{output_dir}/dada2/coidb.dada2.toSpecies.inclNA.fasta.gz"),
+                os.path.exists(f"{output_dir}/sintax/coidb.sintax.exclNA.fasta.gz"),
+                os.path.exists(f"{output_dir}/sintax/coidb.sintax.inclNA.fasta.gz"),
+                os.path.exists(f"{output_dir}/qiime2/coidb.qiime2.info.exclNA.tsv.gz"),
+                os.path.exists(f"{output_dir}/qiime2/coidb.qiime2.info.inclNA.tsv.gz"),
             ]
         )
 

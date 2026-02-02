@@ -30,16 +30,33 @@ def all_input(wildcards):
     input = expand(
         "{output_dir}/{f}",
         output_dir=config["output_dir"],
-        f=[
-            "dada2/coidb.dada2.toGenus.fasta.gz",
-            "dada2/coidb.dada2.toSpecies.fasta.gz",
-            "dada2/coidb.dada2.addSpecies.fasta.gz",
-            "sintax/coidb.sintax.fasta.gz",
-            "qiime2/coidb.qiime2.info.tsv.gz",
-            "coidb.BOLD_BIN.consensus_taxonomy.tsv.gz",
-            "coidb.info.tsv.gz",
-            "timestamps.txt",
-        ],
+        f=["coidb.info.tsv.gz", "timestamps.txt"],
+    )
+    input += expand(
+        "{output_dir}/coidb.stats.{s}.txt",
+        output_dir=config["output_dir"],
+        s=["exclNA", "inclNA"],
+    )
+    input += expand(
+        "{output_dir}/coidb.BOLD_BIN.consensus_taxonomy.{s}.tsv.gz",
+        output_dir=config["output_dir"],
+        s=["exclNA", "inclNA"],
+    )
+    input += expand(
+        "{output_dir}/dada2/coidb.dada2.{t}.{s}.fasta.gz",
+        output_dir=config["output_dir"],
+        t=["toGenus", "toSpecies", "addSpecies"],
+        s=["exclNA", "inclNA"],
+    )
+    input += expand(
+        "{output_dir}/sintax/coidb.sintax.{s}.fasta.gz",
+        output_dir=config["output_dir"],
+        s=["exclNA", "inclNA"],
+    )
+    input += expand(
+        "{output_dir}/qiime2/coidb.qiime2.info.{s}.tsv.gz",
+        output_dir=config["output_dir"],
+        s=["exclNA", "inclNA"],
     )
     if config["gbif_backbone"]:
         input += expand(
@@ -229,23 +246,23 @@ rule calculate_consensus:
         unpack(consensus_input),
     output:
         tsv=temp(
-            os.path.join(config["output_dir"], "coidb.BOLD_BIN.consensus_taxonomy.tsv")
+            os.path.join(
+                config["output_dir"], "coidb.BOLD_BIN.consensus_taxonomy.{s}.tsv"
+            )
         ),
     log:
-        os.path.join(config["output_dir"], "_logs/calculate_consensus.log"),
+        os.path.join(config["output_dir"], "_logs/calculate_consensus.{s}.log"),
     params:
         threshold=config["consensus_threshold"],
         ranks=config["ranks"],
         method=config["consensus_method"],
         bb=lambda wildcards, input: (
-            f"-u {input.backbone} --write_existing {config['output_dir']}/coidb.BOLD_BIN.consensus_taxonomy.from-backbone.tsv"
+            f"-u {input.backbone} --write_existing {config['output_dir']}/coidb.BOLD_BIN.consensus_taxonomy.from-backbone.{wildcards.s}.tsv"
             if config["gbif_backbone"]
             else ""
         ),
-        exclude_missing=(
-            "--exclude_missing_data"
-            if config["consensus_exclude_missing_data"]
-            else ""
+        exclude_missing=lambda wildcards: (
+            "--exclude_missing_data" if wildcards.s == "exclNA" else ""
         ),
     threads: 1
     resources:
@@ -372,6 +389,30 @@ rule collect_vsearch:
         """
 
 
+rule stats:
+    """
+    Generate statistics on created database
+    """
+    message:
+        "Generating statistics"
+    input:
+        fasta=rules.collect_vsearch.output.fasta,
+        tsv=os.path.join(config["output_dir"], "coidb.info.tsv.gz"),
+        consensus=rules.calculate_consensus.output,
+    output:
+        os.path.join(config["output_dir"], "coidb.stats.{s}.txt"),
+    log:
+        os.path.join(config["output_dir"], "_logs/stats.{s}.log"),
+    resources:
+        slurm_account=config["account"],
+    threads: 1
+    shell:
+        """
+        export POLARS_MAX_THREADS={threads}
+        coidb-stats --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} > {output} 2>{log}
+        """
+
+
 rule format_sintax:
     """
     This rule formats the vsearch clustered fasta into a SINTAX compatible
@@ -384,9 +425,9 @@ rule format_sintax:
         tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        fasta=temp(os.path.join(config["output_dir"], "sintax/coidb.sintax.fasta")),
+        fasta=temp(os.path.join(config["output_dir"], "sintax/coidb.sintax.{s}.fasta")),
     log:
-        os.path.join(config["output_dir"], "_logs/format_sintax.log"),
+        os.path.join(config["output_dir"], "_logs/format_sintax.{s}.log"),
     resources:
         slurm_account=config["account"],
     threads: 4
@@ -411,16 +452,18 @@ rule format_dada2:
         consensus=rules.calculate_consensus.output.tsv,
     output:
         to_genus=temp(
-            os.path.join(config["output_dir"], "dada2/coidb.dada2.toGenus.fasta")
+            os.path.join(config["output_dir"], "dada2/coidb.dada2.toGenus.{s}.fasta")
         ),
         to_species=temp(
-            os.path.join(config["output_dir"], "dada2/coidb.dada2.toSpecies.fasta")
+            os.path.join(config["output_dir"], "dada2/coidb.dada2.toSpecies.{s}.fasta")
         ),
         assign_species=temp(
-            os.path.join(config["output_dir"], "dada2/coidb.dada2.addSpecies.fasta")
+            os.path.join(
+                config["output_dir"], "dada2/coidb.dada2.addSpecies.{s}.fasta"
+            )
         ),
     log:
-        os.path.join(config["output_dir"], "_logs/format_dada2.log"),
+        os.path.join(config["output_dir"], "_logs/format_dada2.{s}.log"),
     resources:
         slurm_account=config["account"],
     threads: 4
@@ -445,9 +488,9 @@ rule format_qiime2:
         fasta=rules.collect_vsearch.output.fasta,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        temp(os.path.join(config["output_dir"], "qiime2", "coidb.qiime2.info.tsv")),
+        temp(os.path.join(config["output_dir"], "qiime2", "coidb.qiime2.info.{s}.tsv")),
     log:
-        os.path.join(config["output_dir"], "_logs", "format_qiime2.log"),
+        os.path.join(config["output_dir"], "_logs", "format_qiime2.{s}.log"),
     resources:
         slurm_account=config["account"],
     threads: 4
