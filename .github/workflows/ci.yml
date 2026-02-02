@@ -1,8 +1,6 @@
-name: Build and test
+name: Test
 
 on:
-  push:
-    branches: [ "actions" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
