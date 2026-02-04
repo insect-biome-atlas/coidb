@@ -33,6 +33,7 @@ requires = ["hatchling"]
 channels = ["https://prefix.dev/pixi-build-backends", "https://prefix.dev/conda-forge", "bioconda"]
 platforms = ["linux-64", "osx-arm64", "osx-64"]
 preview = ["pixi-build"]
+version = "0.6.0"
 
 [dependency-groups]
 test = ["pytest"]

@@ -5,6 +5,8 @@
 import gzip as gz
 from tempfile import NamedTemporaryFile
 
+__version__ = "0.6.0"
+
 
 def read_records(f):
     """
