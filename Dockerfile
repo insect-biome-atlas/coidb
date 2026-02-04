@@ -25,4 +25,6 @@ WORKDIR /app
 
 COPY --from=build /opt/conda /opt/conda
 
+EXPOSE 8000
+
 ENTRYPOINT [ "coidb" ]
