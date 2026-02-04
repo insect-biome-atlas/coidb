@@ -1,5 +1,6 @@
 tagline: "A python package for processing metabarcoding references"
 conda: False
+version: "0.6.0"
 
 cli:
   input_file: 

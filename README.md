@@ -32,55 +32,67 @@ Finally, fasta and tab separated files compatible with SINTAX, DADA2 and QIIME2 
 
 ## Installation
 
-### Install with pixi from source
+### Install with pixi (recommended)
 
-1. First install [pixi](https://pixi.sh/latest/#installation)
+Check if you have pixi installed on your system by running:
+
+```bash
+pixi --version
+```
+
+if pixi is not installed, run the following:
 
 ```bash
 curl -fsSL https://pixi.sh/install.sh | sh
 ```
 
-2. Then clone the GitHub repository and change into the `coidb` directory
+* Clone the GitHub repository and change into the `coidb` directory
 
 ```bash
 git clone git@github.com:insect-biome-atlas/coidb.git
 cd coidb
 ```
 
-3. Install the `coidb` package with pixi and start a shell in the installed environment
+* Run the following to install the environment and the `coidb` package:
+
+```bash
+pixi run install
+```
+
+* Activate an interactive shell with the environment and package installed:
 
 ```bash
 pixi shell
 ```
 
-If the installation worked you should be able to run `coidb run -h`. To test the
-installation, run `pixi run test`. Proceed to the [Running
-coidb](#running-coidb) section to see usage information.
+If everything worked you should then be able to run `coidb run -h`. Proceed to
+the [Running coidb](#running-coidb) section to see usage information.
 
-### Install with Conda
+### Install with Docker
 
-1. Make sure [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html) is installed on your system.
-
-2. Create a new environment with `coidb` installed:
+You can pull a Docker image for the latest version of `coidb` by running:
 
 ```bash
-conda create -n coidb -c bioconda coidb
-```
-
-3. Activate the `coidb` environment:
-
-```bash
-conda activate coidb
+docker pull ghcr.io/insect-biome-atlas/coidb
 ```
 
 ## Obtain data
 
-The coidb package uses public barcode reference libraries from [BOLD](https://bench.boldsystems.org/index.php) to build reference fasta files compatible with tools like SINTAX, QIIME2 and DADA2. The first thing you need to do is get your hands on a BOLD Public Data Package:
+The coidb package uses public barcode reference libraries from
+[BOLD](https://bench.boldsystems.org/index.php) to build reference fasta files
+compatible with tools like SINTAX, QIIME2 and DADA2. The first thing you need to
+do is get your hands on a BOLD Public Data Package:
 
-1. Go to the BOLD systems [data package page](https://bench.boldsystems.org/index.php/datapackages/Latest).
-2. Login is required to access files on this page, so either login or sign up if you don't already have an account.
-3. On the data package page, click the **Data package (tar.gz compressed)** download button, accept the terms and click **Download** to obtain a temporary download link.
-4. Use the link to download the data package which will be named `BOLD_Public.<dd>-<Mmm>-<YYYY>.tar.gz`, for example `BOLD_Public.20-Jun-2025.tar.gz`.
+1. Go to the BOLD systems [data package
+   page](https://bench.boldsystems.org/index.php/datapackages/Latest).
+2. Login is required to access files on this page, so either login or sign up if
+   you don't already have an account.
+3. On the data package page, click the **Data package (tar.gz compressed)**
+   download button, accept the terms and click **Download** to obtain a
+   temporary download link.
+4. Use the link to download the data package which will be named
+   `BOLD_Public.<dd>-<Mmm>-<YYYY>.tar.gz`, for example
+   `BOLD_Public.20-Jun-2025.tar.gz`.
 
 > [!TIP]
 > To download via the command line you can copy the Download link instead of
