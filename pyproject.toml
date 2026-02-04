@@ -37,13 +37,6 @@ preview = ["pixi-build"]
 [dependency-groups]
 test = ["pytest"]
 
-[tool.pixi.environments]
-default = {features = [], solve-group = "default"}
-test = {features = ["test"], solve-group = "default"}
-
-[tool.pixi.feature.test.tasks]
-test = { cmd = "pytest tests/test.py" }
-
 [tool.pixi.dependencies]
 snk-cli = "*"
 snakemake = ">=9"
@@ -56,6 +49,22 @@ pygbif = "*"
 tqdm = "*"
 graphviz = "*"
 conda = "*"
+pixi-inject = "*"
+
+[tool.pixi.environments]
+default = {features = [], solve-group = "default"}
+test = {features = ["test"], solve-group = "default"}
+
+[tool.pixi.tasks]
+env = { cmd = "pixi install --locked -e default"}
+build = { cmd = "pixi build --locked --path pyproject.toml", depends-on = ["env"]}
+install = { cmd = "pixi inject -p $CONDA_PREFIX --package coidb-*.conda", depends-on = ["build"]}
+
+
+[tool.pixi.feature.test.tasks]
+build_test = { cmd = "pixi build --locked --path pyproject.toml"}
+inject = { cmd = "pixi inject -p $CONDA_PREFIX --package coidb-*.conda", depends-on = ["build_test"]}
+test = { cmd = "pytest tests/test.py", depends-on=["inject"]}
 
 [tool.pixi.package]
 name = "coidb"
@@ -63,5 +72,18 @@ name = "coidb"
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "0.4.*" }
 
-[tool.pixi.package.build-dependencies]
-hatchling = "*"
+[tool.pixi.package.host-dependencies] 
+hatchling = "==1.26.3"
+
+[tool.pixi.package.run-dependencies]
+snk-cli = "*"
+snakemake = ">=9"
+python = "*"
+vsearch = "*"
+polars = "*"
+seqkit = "*"
+snakemake-executor-plugin-slurm = "*"
+pygbif = "*"
+tqdm = "*"
+graphviz = "*"
+conda = "*"
