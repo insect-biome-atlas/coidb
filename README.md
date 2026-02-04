@@ -247,7 +247,85 @@ You can then edit this file and use it with coidb like so:
 coidb run --config config.yml <additional arguments>
 ```
 
+### Running with Docker
+
+To run `coidb` using the Docker image (see [Install with
+Docker](#install-with-docker)) you must mount the directory containing the
+downloaded BOLD Data Package file (see [Obtain data](#obtain-data)) as well as
+the output directory where the resulting database files will be stored. 
+
+As an example, say we have downloaded the BOLD Data Package file
+`BOLD_Public.04-Jul-2025.tar.gz` into a directory called `data/` and we want the
+resulting files produced by coidb to be placed under `releases/04-Jul-2025`.
+Then we can run:
+
+```bash
+docker run \
+  -v $(pwd)/data:/data \
+  -v $(pwd)/releases/04-Jul-2025:/releases/04-Jul-2025 \
+  ghcr.io/insect-biome-atlas/coidb \
+  coidb run \
+    -i /data/BOLD_Public.04-Jul-2025.tar.gz \
+    -o /releases/04-Jul-2025 \
+    -c 4 \
+    --temp-dir /releases/04-Jul-2025/tmp
+```
+
+In this example, the line `-v $(pwd)/data:/data` mounts the `data/` directory in
+the current folder into `/data` in the Docker container and the line 
+`-v $(pwd)/releases/04-Jul-2025:/releases/04-Jul-2025` creates a folder
+`releases/04-Jul-2025` on your system and mounts it into `/releases/04-Jul-2025`
+in the container. 
+
+The file structure on your system will be:
+
+```
+$(pwd) # your current directory
+├── data
+│   └── BOLD_Public.04-Jul-2025.tar.gz
+└── releases
+    └── 04-Jul-2025
+```
+
+and inside the container:
+
+```
+/ # container root
+├── data
+│   └── BOLD_Public.04-Jul-2025.tar.gz
+└── releases
+    └── 04-Jul-2025
+```
+
+The line with `ghcr.io/insect-biome-atlas/coidb` refers to the Docker image that
+you will use to run the container.
+
+The line with `coidb run` is the command you will run inside the container and
+what follows are command line arguments passed to `coidb`:
+
+* `-i /data/BOLD_Public.04-Jul-2025.tar.gz` instructs `coidb` to use the Data
+  Package file as input (the path is the one mounted inside the container)
+* `-o /releases/04-Jul-2025` sets the output directory (again, this is the path
+  inside the container. On your system the results will be in
+  `releases/04-Jul_2025` inside your current directory)
+* `-c 4` sets maximum number of cpus to use to 4
+* `--temp-dir /releases/04-Jul-2025/tmp` sets the temporary directory. Since
+  this path is inside the output directory you have mounted you ensure that
+  temporary files are kept after the container stops.
+
 ### Cluster execution
+
+> [!IMPORTANT]
+> When running on a compute cluster we advise **NOT** to use the `coidb`
+> container via Docker or (more commonly on compute clusters) Apptainer. Instead
+> install `coidb` as described under [Install with
+> pixi](#install-with-pixi-recommended) and use a configuration profile (see
+> below) so that jobs are submitted to the cluster workload manager.
+
+> [!TIP]
+> When running on compute clusters it's good practice to use a terminal
+> multiplexer such as `screen` or `tmux` so that your running processes are not
+> interrupted by connection failure.
 
 To run `coidb` on a compute cluster you must set the compute account to use with
 the `--account` or `-A` argument. In addition, you should use one of the
