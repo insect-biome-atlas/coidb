@@ -5,24 +5,24 @@ SHELL ["/bin/bash", "-c"]
 
 WORKDIR /app
 
-COPY pixi.toml pixi.lock README.md pyproject.toml /app/
+ENV PATH=$PATH:/opt/conda/bin:/opt/conda/condabin
+
+RUN pixi global install pixi-install-to-prefix pixi-inject
+
 COPY src /app
+COPY pixi.lock pyproject.toml README.md /app/
 
-RUN pixi build
+RUN pixi-install-to-prefix -l pixi.lock /opt/conda && \
+    pixi build --locked --path pyproject.toml && \
+    pixi inject --prefix /opt/conda --package coidb*.conda
 
 
-FROM condaforge/mambaforge:24.9.2-0 AS install
+FROM condaforge/mambaforge:24.9.2-0 AS production
 
-# Use bash as shell
 SHELL ["/bin/bash", "-c"]
 
-WORKDIR /analysis
+WORKDIR /app
 
-COPY --from=build /app/*.conda /app/coidb.conda
-
-RUN conda install -c bioconda -c conda-forge snk-cli python && \
-    conda install /app/coidb.conda && \
-    conda clean -ay && \
-    rm /app/coidb.conda
+COPY --from=build /opt/conda /opt/conda
 
 ENTRYPOINT [ "coidb" ]
