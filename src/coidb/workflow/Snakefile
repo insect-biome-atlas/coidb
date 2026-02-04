@@ -342,7 +342,7 @@ rule vsearch:
             vsearch --cluster_fast $f --id {params.id} --centroids $f.centroids --threads {threads}
             rm $f
         done
-        cat *.centroids | seqkit replace -p '\\|' -r ' ' > {output.fasta}
+        cat *.centroids | seqkit replace -p "\\|" -r " " > {output.fasta}
         """
 
 
