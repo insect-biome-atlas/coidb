@@ -341,8 +341,9 @@ rule vsearch:
         do 
             vsearch --cluster_fast $f --id {params.id} --centroids $f.centroids --threads {threads}
             rm $f
+            cat $f.centroids | seqkit replace -p "\\|" -r " " >> {wildcards.batch_id}.fasta
         done
-        cat *.centroids | seqkit replace -p "\\|" -r " " > {output.fasta}
+        mv {wildcards.batch_id}.fasta {output.fasta}
         """
 
 
