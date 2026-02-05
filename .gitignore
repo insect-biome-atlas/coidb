@@ -143,3 +143,6 @@ data
 tmp
 temp
 results
+tests/test*
+releases
+*.conda
