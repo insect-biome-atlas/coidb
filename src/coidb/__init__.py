@@ -8,37 +8,6 @@ from tempfile import NamedTemporaryFile
 __version__ = "0.6.0"
 
 
-def read_records(f):
-    """
-    Read records from fasta file
-    """
-    records = []
-    if f.endswith(".gz"):
-        open_fn = gz.open
-        mode = "rt"
-    else:
-        open_fn = open
-        mode = "r"
-    with open_fn(f, mode) as fhin:
-        for line in fhin:
-            line = line.rstrip()
-            if line.startswith(">"):
-                records.append(line.lstrip(">").split(" ")[0])
-    return records
-
-
-def series_to_fasta(series, outfile, compress=False):
-    """
-    Writes a polars Series to a file in fasta format
-    """
-    if compress:
-        with gz.open(outfile, "wt") as fhout:
-            fhout.write("\n".join(series.to_list()))
-    else:
-        with open(outfile, "w") as fhout:
-            fhout.write("\n".join(series.to_list()))
-
-
 def get_header(f):
     """
     Returns header from input file
