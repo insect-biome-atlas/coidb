@@ -29,7 +29,8 @@ filtered sequences are then dereplicated by clustering sequences within each
 BOLD BIN using vsearch. A consensus taxonomy is calculated using an 80%
 consensus threshold starting from species and moving up in the taxonomy tree. 
 
-Finally, fasta and tab separated files compatible with SINTAX, DADA2 and QIIME2 are generated.
+Finally, fasta and tab separated files compatible with SINTAX, DADA2 and QIIME2
+are generated.
 
 ## Installation
 
@@ -81,7 +82,8 @@ docker pull ghcr.io/insect-biome-atlas/coidb
 
 We recommend to run `coidb` on a system with at least 4 cores and 16 GB RAM.
 During runs, roughly 75-100 GB of disk space will be used which will be reduced
-to ~6 GB upon completion.
+to ~6 GB upon completion. The full run takes roughly 3 hours on a MacBook Pro
+Laptop running with 4 cores.
 
 ## Obtain data
 
