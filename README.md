@@ -80,8 +80,8 @@ docker pull ghcr.io/insect-biome-atlas/coidb
 ## Requirements
 
 We recommend to run `coidb` on a system with at least 4 cores and 16 GB RAM.
-During runs, roughly 50 GB of disk space will be used which will be reduced to
-~6 GB upon completion.
+During runs, roughly 75-100 GB of disk space will be used which will be reduced
+to ~6 GB upon completion.
 
 ## Obtain data
 
