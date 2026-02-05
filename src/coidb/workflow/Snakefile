@@ -11,8 +11,6 @@ import sys
 if config["account"] is None:
     config["account"] = "None"
 
-from coidb import series_to_fasta
-
 
 localrules:
     extract_input,
@@ -24,6 +22,9 @@ localrules:
 wildcard_constraints:
     n="backbone|coidb",
     suffix="tsv|fasta",
+    format="sintax|dada2.toGenus|dada2.toSpecies|dada2.addSpecies",
+    tool="sintax|dada2",
+    s="inclNA|exclNA",
 
 
 def all_input(wildcards):
@@ -414,66 +415,76 @@ rule stats:
         """
 
 
-rule format_sintax:
-    """
-    This rule formats the vsearch clustered fasta into a SINTAX compatible
-    format.
-    """
+def get_kv_format(wildcards):
+    if wildcards.tool == "sintax":
+        return "sintax"
+    elif wildcards.tool == "dada2":
+        if wildcards.format == "dada2.toGenus":
+            return "dada2.toGenus"
+        elif wildcards.format == "dada2.toSpecies":
+            return "dada2.toSpecies"
+        else:
+            return "dada2.addSpecies"
+
+
+rule generate_kv_file:
     message:
-        "Generate SINTAX format fasta file"
+        "Generate key-value file for {wildcards.tool} ({wildcards.format} {wildcards.s})"
     input:
-        fasta=rules.collect_vsearch.output.fasta,
-        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
-        consensus=rules.calculate_consensus.output.tsv,
+        rules.calculate_consensus.output.tsv,
     output:
-        fasta=temp(os.path.join(config["output_dir"], "sintax/coidb.sintax.{s}.fasta")),
+        txt=temp(os.path.join(config["output_dir"], "{tool}/coidb.{format}.{s}.txt")),
     log:
-        os.path.join(config["output_dir"], "_logs/format_sintax.{s}.log"),
+        os.path.join(
+            config["output_dir"], "_logs/generate_kv_file.{tool}.{format}.{s}.txt"
+        ),
+    threads: 1
     resources:
         slurm_account=config["account"],
-    threads: 4
     shell:
         """
         export POLARS_MAX_THREADS={threads}
-        coidb-format --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} \
-            sintax --outfile {output.fasta} 2>{log}
+        coidb-format --consensus {input} --outfile {output} --format {wildcards.format} 2>{log}
         """
 
 
-rule format_dada2:
+def get_seqkit_pattern(wildcards):
     """
-    This rule formats sequences from the vsearch clustered fasta into DADA2
-    compatible formats.
+    Return the proper pattern string based on the fasta file format to produce
+    """
+    if wildcards.tool == "sintax" or wildcards.format == "dada2.addSpecies":
+        return "' (.+)$'"
+    elif wildcards.tool == "dada2":
+        if wildcards.format in ["dada2.toGenus", "dada2.toSpecies"]:
+            return "'.+ (.+)$'"
+
+
+rule format:
+    """
+    This rule uses key-value files to generate sintax and dada2 formatted fasta
+    files with seqkit.
     """
     message:
         "Generate DADA2 format fasta files"
     input:
-        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
+        kv_file=rules.generate_kv_file.output.txt,
         fasta=rules.collect_vsearch.output.fasta,
         consensus=rules.calculate_consensus.output.tsv,
     output:
-        to_genus=temp(
-            os.path.join(config["output_dir"], "dada2/coidb.dada2.toGenus.{s}.fasta")
-        ),
-        to_species=temp(
-            os.path.join(config["output_dir"], "dada2/coidb.dada2.toSpecies.{s}.fasta")
-        ),
-        assign_species=temp(
-            os.path.join(
-                config["output_dir"], "dada2/coidb.dada2.addSpecies.{s}.fasta"
-            )
-        ),
+        fasta=os.path.join(config["output_dir"], "{tool}/coidb.{format}.{s}.fasta.gz"),
     log:
-        os.path.join(config["output_dir"], "_logs/format_dada2.{s}.log"),
+        os.path.join(config["output_dir"], "_logs/format_{tool}.{format}.{s}.log"),
     resources:
         slurm_account=config["account"],
+    params:
+        pattern=lambda wildcards: get_seqkit_pattern,
+        replace=lambda wildcards: (
+            " {kv}" if wildcards.format == "dada2.addSpecies" else "{kv}"
+        ),
     threads: 4
     shell:
         """
-        export POLARS_MAX_THREADS={threads}
-        coidb-format --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} dada2 \
-            --outfile_toGenus {output.to_genus} --outfile_toSpecies {output.to_species} \
-            --outfile_assignSpecies {output.assign_species} 2>{log}
+        seqkit replace -j {threads} -p {params.pattern} -r '{params.replace}' -k {input.kv_file} -o {output.fasta} {input.fasta} >{log} 2>&1
         """
 
 
@@ -485,7 +496,6 @@ rule format_qiime2:
     message:
         "Generate QIIME2 compatible TSV file"
     input:
-        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
         fasta=rules.collect_vsearch.output.fasta,
         consensus=rules.calculate_consensus.output.tsv,
     output:
@@ -498,8 +508,7 @@ rule format_qiime2:
     shell:
         """
         export POLARS_MAX_THREADS={threads}
-        coidb-format --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} qiime2 \
-            --qiime2_outfile {output} 2>{log}
+        coidb-format --fasta {input.fasta} --consensus {input.consensus} --format qiime2 --outfile {output} 2>{log}
         """
 
 
