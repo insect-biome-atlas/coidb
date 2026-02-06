@@ -273,7 +273,7 @@ docker run \
   -v $(pwd)/data:/data \
   -v $(pwd)/releases/04-Jul-2025:/releases/04-Jul-2025 \
   ghcr.io/insect-biome-atlas/coidb \
-  coidb run \
+  run \
     -i /data/BOLD_Public.04-Jul-2025.tar.gz \
     -o /releases/04-Jul-2025 \
     -c 4 \
@@ -309,8 +309,9 @@ and inside the container:
 The line with `ghcr.io/insect-biome-atlas/coidb` refers to the Docker image that
 you will use to run the container.
 
-The line with `coidb run` is the command you will run inside the container and
-what follows are command line arguments passed to `coidb`:
+The line with `run` is the command you will run inside the container. The image 
+entrypoint is `coidb` so `run` is added to this command and what follows are 
+command line arguments passed to `coidb`:
 
 * `-i /data/BOLD_Public.04-Jul-2025.tar.gz` instructs `coidb` to use the Data
   Package file as input (the path is the one mounted inside the container)
