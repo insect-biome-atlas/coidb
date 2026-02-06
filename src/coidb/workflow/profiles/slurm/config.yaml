@@ -1,0 +1,50 @@
+default-resources: 
+  slurm_partition: <your-slurm-partition>
+  runtime: 30
+  mem_mb: 2000
+
+
+set-resources:
+  filter:
+    mem_mb: 24000
+  fill_missing:
+    mem_mb: 4000
+  fix_nonunique:
+    mem_mb: 24000
+  calculate_consensus:
+    mem_mb: 16000
+  batch_multi_record_bins:
+    runtime: 120
+  vsearch:
+    runtime: 600
+    mem_mb: 8000
+  add_to_vsearch:
+    mem_mb: 4000
+  parse_backbone:
+    mem_mb: 4000
+  format_sintax:
+    mem_mb: 24000
+  format_dada2:
+    mem_mb: 24000
+  format_qiime2:
+    mem_mb: 24000
+
+set-threads:
+  filter: 10
+  multi_record_bins: 10
+  fix_nonunique: 10
+  calculate_consensus: 10
+  format_sintax: 10
+  format_dada2: 10
+  format_qiime2: 10
+
+
+printshellcmds: False
+local-cores: 1
+keep-going: True
+rerun-triggers: mtime
+rerun-incomplete: True
+local-cores: 1
+jobs: 100
+latency-wait: 5
+executor: slurm

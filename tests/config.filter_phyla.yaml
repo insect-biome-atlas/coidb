@@ -1,6 +1,0 @@
-database:
-    # taxa of interest
-    taxa:
-      - Arthropoda
-      - Chordata
-    rank: "phylum"

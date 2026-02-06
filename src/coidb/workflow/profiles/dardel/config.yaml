@@ -1,0 +1,55 @@
+default-resources: 
+  slurm_partition: shared
+  runtime: 60
+  mem_mb: 1776
+
+
+set-resources:
+  filter:
+    mem_mb: 26640
+    runtime: 30
+  multi_record_bins:
+    mem_mb: 26640
+  fill_missing:
+    mem_mb: 3552
+    runtime: 30
+  fix_nonunique:
+    mem_mb: 26640
+    runtime: 30
+  calculate_consensus:
+    mem_mb: 14208
+    runtime: 120
+  batch_multi_record_bins:
+    runtime: 120
+  vsearch:
+    runtime: 600
+    mem_mb: 7104
+  add_to_vsearch:
+    mem_mb: 3552
+  parse_backbone:
+    mem_mb: 3552
+  format_sintax:
+    mem_mb: 26640
+  format_dada2:
+    mem_mb: 26640
+  format_qiime2:
+    mem_mb: 26640
+
+set-threads:
+  filter: 15
+  multi_record_bins: 15
+  fix_nonunique: 15
+  calculate_consensus: 8
+  format_sintax: 15
+  format_dada2: 15
+  format_qiime2: 15
+
+printshellcmds: False
+local-cores: 1
+keep-going: True
+rerun-triggers: mtime
+rerun-incomplete: True
+local-cores: 1
+jobs: 100
+latency-wait: 5
+executor: slurm

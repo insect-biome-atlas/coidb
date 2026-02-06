@@ -1,3 +1,0 @@
-database:
-    # Percent identity to cluster seqs in the database by
-    pid: 1.0

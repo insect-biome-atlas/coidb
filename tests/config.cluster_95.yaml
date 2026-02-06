@@ -1,7 +1,0 @@
-database:
-    # Percent identity to cluster seqs in the database by
-    pid: 0.95
-    # gene of interest (will be used to filter sequences)
-    gene: []
-    # phyla of interest (omit this in order to include all phyla)
-    phyla: []

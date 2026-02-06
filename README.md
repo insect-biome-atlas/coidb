@@ -1,295 +1,550 @@
+[![Pixi Badge](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/prefix-dev/pixi/main/assets/badge/v0.json)](https://pixi.sh)
+
 # COI DB
 
+## Table of contents
+
+- [Overview](#overview)
+- [Installation](#installation)
+  - [Install with pixi](#install-with-pixi-recommended)
+  - [Install with Docker](#install-with-docker)
+- [Obtain data](#obtain-data)
+- [Running coidb](#running-coidb)
+  - [Using a configuration file](#using-a-configuration-file)
+  - [Running with Docker](#running-with-docker)
+  - [Cluster execution](#cluster-execution)
+- [Output](#output)
+- [How it works](#how-it-works)
+
+
 ## Overview
-This tool downloads sequences + metadata from [GBIF](https://hosted-datasets.gbif.org/)
-and formats sequences of interest for use with downstream metabarcoding analyses.
 
-## Installation options
+The coidb package runs a Snakemake workflow under the hood which contains steps
+to filter the BOLD public data to only the COI-5P marker gene, remove leading
+and trailing gaps and sequences with internal gaps and ambiguous nucleotides. It
+also applies a length filtering and only keeps records assigned to a BOLD BIN.
+Steps are also taken to ensure that taxonomic lineages are unique by prefixing
+duplicated taxonomic labels or removing BOLD BINs with unassigned records. The
+filtered sequences are then dereplicated by clustering sequences within each
+BOLD BIN using vsearch. A consensus taxonomy is calculated using an 80%
+consensus threshold starting from species and moving up in the taxonomy tree. 
 
-**Option 1**: Install with conda:
+Finally, fasta and tab separated files compatible with SINTAX, DADA2 and QIIME2
+are generated.
 
-```bash
-conda install -c bioconda coidb
-```
+## Installation
 
-**Option 2**: Download a release from the '**Releases**' section, unpack it and then create and activate the conda environment. Finally, install the software:
+### Install with pixi (recommended)
 
-```bash
-conda env create -f environment.yml
-conda activate coidb
-python -m pip install .
-```
-
-## Quick start
-To see the steps that will be run, without actually running them, do:
+Check if you have pixi installed on your system by running:
 
 ```bash
-coidb -n
+pixi --version
 ```
 
-Remove the `-n` flag to actually run the steps. 
+if pixi is not installed, run the following:
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | sh
+```
+
+* Clone the GitHub repository and change into the `coidb` directory
+
+```bash
+git clone git@github.com:insect-biome-atlas/coidb.git
+cd coidb
+```
+
+* Run the following to install the environment and the `coidb` package:
+
+```bash
+pixi run install
+```
+
+* Activate an interactive shell with the environment and package installed:
+
+```bash
+pixi shell
+```
+
+If everything worked you should then be able to run `coidb run -h`. Proceed to
+the [Running coidb](#running-coidb) section to see usage information.
+
+### Install with Docker
+
+You can pull a Docker image for the latest version of `coidb` by running:
+
+```bash
+docker pull ghcr.io/insect-biome-atlas/coidb
+```
+
+## Requirements
+
+We recommend to run `coidb` on a system with at least 4 cores and 16 GB RAM.
+During runs, roughly 75-100 GB of disk space will be used which will be reduced
+to ~6 GB upon completion. The full run takes roughly 3 hours on a MacBook Pro
+Laptop running with 4 cores.
+
+## Obtain data
+
+The coidb package uses public barcode reference libraries from
+[BOLD](https://bench.boldsystems.org/index.php) to build reference fasta files
+compatible with tools like SINTAX, QIIME2 and DADA2. The first thing you need to
+do is get your hands on a BOLD Public Data Package:
+
+1. Go to the BOLD systems [data package
+   page](https://bench.boldsystems.org/index.php/datapackages/Latest).
+2. Login is required to access files on this page, so either login or sign up if
+   you don't already have an account.
+3. On the data package page, click the **Data package (tar.gz compressed)**
+   download button, accept the terms and click **Download** to obtain a
+   temporary download link.
+4. Use the link to download the data package which will be named
+   `BOLD_Public.<dd>-<Mmm>-<YYYY>.tar.gz`, for example
+   `BOLD_Public.20-Jun-2025.tar.gz`.
+
+> [!TIP]
+> To download via the command line you can copy the Download link instead of
+> clicking it, then use `wget` or `curl` to download directly to a file of your
+> choice. For example, to download the data package to a directory called
+> `data/` you could run:
+> ```bash
+> mkdir data
+> wget -O data/BOLD_Public.20-Jun-2025.tar.gz <copied download link>
+> ```
+> or with `curl`:
+> ```bash
+> mkdir data 
+> curl -o data/BOLD_Public.20-Jun-2025.tar.gz <copied download link>
+> ```
+
+The downloaded file can now be used as input to `coidb` by pointing to it with
+the `--input-file` argument, or by setting `input_file:
+<path-to-downloaded-tar.gz file>` in a [configuration
+file](#using-a-configuration-file)
+
+BOLD citation:
+
+Ratnasingham, Sujeevan, and Paul D N Hebert. “bold: The Barcode of Life Data System (http://www.barcodinglife.org).” Molecular ecology notes vol. 7,3 (2007): 355-364. doi:10.1111/j.1471-8286.2007.01678.x
+
+## Running coidb
+
+The general syntax for running `coidb` is:
+
+```bash
+coidb run <arguments>
+```
+
+A typical run could look like this:
+
+```bash
+coidb run -i data/BOLD_Public.04-Jul-2025.tar.gz -o results -c 4
+```
+
+In this example, the file `data/BOLD_Public.04-Jul-2025.tar.gz` was downloaded
+from [boldsystems.org/](https://boldsystems.org/) (read more about how to obtain
+the input data under [Obtain data](#obtain-data)), output is stored in the
+`results` directory and 4 threads are used for running `coidb`.
+
+To see a list of all arguments, run `coidb run -h`. The available arguments are listed below:
+
+```bash
+--input-file       -i PATH        Input tar.gz archive dowloaded from BOLD.
+--output-dir       -o PATH        Folder to store database files in [default: results]
+--account          -A TEXT        SLURM compute account [default: None]
+--temp-dir            PATH        Folder for temporary files [default: tmp]
+--gbif-backbone                   Use GBIF backbone to infer consensus taxonomy for BOLD BINs
+--consensus-threshold INTEGER     Threshold (in %) when calculating consensus taxonomy [default: 80]
+--consensus-method    [rank|full] Method to use when calculating consensus [default: rank]
+--vsearch-identity    FLOAT       Identity at which to cluster sequences per BIN [default: 1.0]
+--ranks               TEXT        Ranks to use for calculating consensus and generating fastas [default: kingdom, phylum, class, order, family, genus, species]
+--min-len             INTEGER     Minimum length of sequences to include [default: 500]
+--batch-size          INTEGER     Number of BOLD BINs per batch for running vsearch [default: 50000]
+```
+
+* The `--input-file` `-i` argument must point to a BOLD tar archive that you
+  have downloaded from [boldsystems.org](https://boldsystems.org/) (see [Obtain
+  data](#obtain-data) below). 
+* The `--output-dir` or `-o` argument is a directory in which the output from
+  `coidb` will be stored (see details under [Output](#output) below).
+* The `--account` or `-A` argument sets a compute account for running on SLURM
+  clusters (see [Cluster execution](#cluster-execution) below).
+* The `--temp-dir` argument sets a directory to use for storing temporary
+  output. This directory can be deleted once `coidb` finishes.
+* The `--gbif-backbone` argument instructs `coidb` to use the GBIF backbone
+  taxonomy to infer taxonomic information for BOLD BINs. Note that this option
+  is currently not reliable because of outdated GBIF data.
+* The `--consensus-threshold` specifies a threshold in percent when calculating
+  consensus taxonomies for BOLD BINs. 
+* The `--consensus-method` argument specifies how the consensus taxonomy is
+  calculated. With `rank` (default), a consensus is calculated at each rank
+  separately starting from 'species' and moving up in the hierarchy (genus,
+  family etc.). If a consensus above the consensus-threshold is found at any
+  rank, the taxonomy at that rank and its parent lineage is used as taxonomy for
+  the BOLD BIN. With `full`, a consensus is applied by taking into account the
+  parent lineages at each rank, so starting with all labels from
+  kingdom->species, then kingdom->genus etc.
+* The `--vsearch-identity` argument specifies the identity threshold to use when
+  clustering sequences with vsearch. The default is `1.0` meaning sequences are
+  clustered at 100% identity.
+* The `--ranks` argument specifies what taxonomic ranks to use. This applies
+  both to what ranks are included in the final output and what ranks are used to
+  calculate the consensus taxonomy.
+* The `--min-len` argument sets a minimum length for sequences to include in the
+  final output.
+* The `--batch-size` argument sets the number of BOLD bins to process with
+  vsearch in parallell. This is used to reduce the the size of the workflow
+  graph by splitting the input sequences into batches with `batch-size` number
+  of BOLD bins per file.
+
+In addition to these command line arguments there are some arguments that define how `coidb` runs on your system and which are similar to how you typically interact with Snakemake workflows:
+
+```bash
+--config             FILE     Path to snakemake config file. Overrides existing workflow configuration. [default: None] 
+--resource        -r PATH     Additional resources to copy from workflow directory at run time.
+--profile         -p TEXT     Name of profile to use for configuring Snakemake. [default: None]
+--dry             -n          Do not execute anything, and display what would be done.
+--lock            -l          Lock the working directory.
+--dag             -d PATH     Save directed acyclic graph to file. Must end in .pdf, .png or .svg [default: None]
+--cores           -c INTEGER  Set the number of cores to use. If None will use all cores. [default: None]
+--no-conda.                   Do not use conda environments.
+--keep-resources              Keep resources after pipeline completes.
+--keep-snakemake              Keep .snakemake folder after pipeline completes.
+--verbose         -v          Run workflow in verbose mode.
+--help-snakemake  -hs         Print the snakemake help and exit.
+--help            -h                Show this message and exit.
+```
+
+* The `--config` argument lets you pass a configuration file in YAML format, as
+  an alternative to specifying arguments directly on the command line.
+* The `--profile` argument specifies configuration profile to use for running `coidb`.
+
+### Using a configuration file
+
+You can generate a default configuration file by running:
+
+```bash
+coidb config > config.yml
+```
+
+This creates a new file `config.yml` with the following default parameters:
+
+```yaml
+account: ''
+batch_size: 50000
+consensus_method: rank
+consensus_threshold: 80
+gbif_backbone: false
+input_file: null
+min_len: 500
+output_dir: results
+ranks:
+- kingdom
+- phylum
+- class
+- order
+- family
+- genus
+- species
+temp_dir: tmp
+vsearch_identity: 1.0
+```
+
+You can then edit this file and use it with coidb like so:
+
+```bash
+coidb run --config config.yml <additional arguments>
+```
+
+### Running with Docker
+
+To run `coidb` using the Docker image (see [Install with
+Docker](#install-with-docker)) you must mount the directory containing the
+downloaded BOLD Data Package file (see [Obtain data](#obtain-data)) as well as
+the output directory where the resulting database files will be stored. 
+
+As an example, say we have downloaded the BOLD Data Package file
+`BOLD_Public.04-Jul-2025.tar.gz` into a directory called `data/` and we want the
+resulting files produced by coidb to be placed under `releases/04-Jul-2025`.
+Then we can run:
+
+```bash
+docker run \
+  -v $(pwd)/data:/data \
+  -v $(pwd)/releases/04-Jul-2025:/releases/04-Jul-2025 \
+  ghcr.io/insect-biome-atlas/coidb \
+  coidb run \
+    -i /data/BOLD_Public.04-Jul-2025.tar.gz \
+    -o /releases/04-Jul-2025 \
+    -c 4 \
+    --temp-dir /releases/04-Jul-2025/tmp
+```
+
+In this example, the line `-v $(pwd)/data:/data` mounts the `data/` directory in
+the current folder into `/data` in the Docker container and the line 
+`-v $(pwd)/releases/04-Jul-2025:/releases/04-Jul-2025` creates a folder
+`releases/04-Jul-2025` on your system and mounts it into `/releases/04-Jul-2025`
+in the container. 
+
+The file structure on your system will be:
+
+```
+$(pwd) # your current directory
+├── data
+│   └── BOLD_Public.04-Jul-2025.tar.gz
+└── releases
+    └── 04-Jul-2025
+```
+
+and inside the container:
+
+```
+/ # container root
+├── data
+│   └── BOLD_Public.04-Jul-2025.tar.gz
+└── releases
+    └── 04-Jul-2025
+```
+
+The line with `ghcr.io/insect-biome-atlas/coidb` refers to the Docker image that
+you will use to run the container.
+
+The line with `coidb run` is the command you will run inside the container and
+what follows are command line arguments passed to `coidb`:
+
+* `-i /data/BOLD_Public.04-Jul-2025.tar.gz` instructs `coidb` to use the Data
+  Package file as input (the path is the one mounted inside the container)
+* `-o /releases/04-Jul-2025` sets the output directory (again, this is the path
+  inside the container. On your system the results will be in
+  `releases/04-Jul_2025` inside your current directory)
+* `-c 4` sets maximum number of cpus to use to 4
+* `--temp-dir /releases/04-Jul-2025/tmp` sets the temporary directory. Since
+  this path is inside the output directory you have mounted you ensure that
+  temporary files are kept after the container stops.
+
+### Cluster execution
+
+> [!IMPORTANT]
+> When running on a compute cluster we advise **NOT** to use the `coidb`
+> container via Docker or (more commonly on compute clusters) Apptainer. Instead
+> install `coidb` as described under [Install with
+> pixi](#install-with-pixi-recommended) and use a configuration profile (see
+> below) so that jobs are submitted to the cluster workload manager.
+
+> [!TIP]
+> When running on compute clusters it's good practice to use a terminal
+> multiplexer such as `screen` or `tmux` so that your running processes are not
+> interrupted by connection failure.
+
+To run `coidb` on a compute cluster you must set the compute account to use with
+the `--account` or `-A` argument. In addition, you should use one of the
+pre-defined configuration profiles. To see available profiles, run:
+
+```bash
+coidb profile list
+```
+
+The profiles can be used as-is by adding `--profile <name of profile>` to the
+command line call, or you can output the settings for a profile to a file and
+modify it you fit your needs. For example, to output the generic SLURM profile
+settings, we recommend that you run:
+
+```bash
+mkdir my-slurm-profile
+coidb profile show slurm > my-slurm-profile/config.yaml
+```
+
+Then you can edit the `my-slurm-profile/config.yaml`. Once you're done you can
+use this profile by passing `--profile my-slurm-profile` to the `coidb run`
+command.
+
+...
 
 ## Output
 
-The primary outputs of the tool are:
+### Primary output files
 
-1. bold_clustered_cleaned.fasta: A fasta file with sequences clustered at whatever threshold set in the config file (default is 1.0 which means 100% identity). The header of each sequence in this file has the format
+The primary outputs from a run are placed in the directory set by the `--output-dir` command line argument (default: `results/`). These include:
 
-```
->GMGMN070-14 Animalia;Arthropoda;Insecta;Lepidoptera;Pieridae;Gonepteryx;Gonepteryx rhamni;BOLD:AAA9222
-```
+* `coidb.clustered.fasta.gz`: A fasta file with sequences clustered at whatever
+   threshold set in the config file (default is 1.0 which means 100% identity).
+   Sequence ids in this file correspond to process_ids, _e.g._ `BPALB370-17`,
+   and can be looked up in the [BOLD
+   portal](portal.boldsystems.org/result?query=BPALB370-17[ids]). The fasta
+   header also includes the corresponding BOLD BIN id of the sequence, _e.g._
+   `bin_uri:BOLD:AAF7702`.
 
-In this example `GMGMN070-14` is the representative id for the sequence and can be viewed in the BOLD database at https://www.boldsystems.org/index.php/Public_RecordView?processid=GMGMN070-14.
+* `coidb.info.tsv.gz`: This TSV file contains sequence and taxonomic information
+  for all records kept after filtering.
 
-2. bold_clustered.sintax.fasta: This fasta file is compatible with the SINTAX classification tool implemented in [vsearch](https://github.com/torognes/vsearch) and has headers with the format:
+* `coidb.BOLD_BIN.consensus_taxonomy.exclNA.tsv.gz`: This TSV file contains the
+  calculated consensus taxonomy of BOLD BINs. If a consensus could not be
+  reached at a certain taxonomic rank, the taxonomic label at that rank is
+  prefixed with 'unresolved.' followed by the label of the lowest consensus
+  rank. The `exclNA` part of the filename means that taxonomic labels
+  corresponding to missing data (those suffixed with `_X`) were ignored when
+  calculating the consensus.
 
-```
->GMGMN070-14;tax=d:Animalia,k:Arthropoda,p:Insecta,c:Lepidoptera,o:Pieridae,f:Gonepteryx,g:Gonepteryx rhamni,s:BOLD:AAA9222
-```
+* `coidb.BOLD_BIN.consensus_taxonomy.inclNA.tsv.gz`: Same as above, but here all
+  taxonomic labels were taken into account when calculating the consensus (even
+  labels corresponding to missing data).
 
-> [!NOTE]
-> In the SINTAX formatted headers, the taxonomic ranks are shifted to allow classification down to BOLD_bin. Since SINTAX only allows for ranks prefixed with 'd' (for domain) 'k' (kingdom), 'p' (phylum), 'c' (class), 'o' (order), 'f' (family), 'g' (genus), or 's' (species) we shift the taxonomy so that kingdom becomes domain, etc., and prefix the BOLD bin id with 's'.
+> [!IMPORTANT]
+> The consensus taxonomy files described above are used to create the SINTAX,
+> DADA2 and QIIME2 compatible reference files. This means that there are two
+> versions of each of these files, one tagged with `exclNA` and one with
+> `inclNA`. Of these two versions the `exclNA` file will contain more resolved
+> taxonomies and will allow the taxonomic classifiers to assign sequences with
+> higher resolution. However, there is a higher risk that these taxonomies
+> contain errors due to incorrectly added taxonomic information in the BOLD
+> database. As such, the `inclNA` version represents a more conservative (but
+> less resolved) version of the database.
 
-3. bold_clustered.assigntaxonomy.fasta and bold_clustered.addSpecies.fasta: These fasta files are compatible with the assignTaxonomy and addSpecies functions implemented in [DADA2](https://github.com/benjjneb/dada2/). For the assignTaxonomy file the headers have the format:
+### Log files
 
-```
->Animalia;Arthropoda;Insecta;Lepidoptera;Pieridae;Gonepteryx;Gonepteryx rhamni;
-```
+Log files from a coidb run are stored under `_logs/` in your `--output-dir` directory (default: `results/`).
 
-and for the addSpecies file the headers have the format:
+### Temporary files
 
-```
->GMGMN070-14 Gonepteryx rhamni
-```
+Temporary files are stored under the directory defined by `--temp-dir` (default:
+`tmp/`). This entire directory can be removed after a successful run of coidb,
+but can also be used to get an idea of what has happened to the raw data along
+the way.
 
-## Configuration
-There are a few configurable parameters that modifies how sequences are filtered
-and clustered. You can modify these parameters using a config file in `yaml` 
-format. The default setup looks like this:
+For example, the `_extract/` directory contains the raw TSV file extracted from
+the input file you used, while the `_processed/` directory contains _e.g._ the
+`data.filtered.tsv` file which is the output from the filtering step of coidb.
 
-```yaml
-database:
-    # url to download info and sequence files from
-    url: "https://hosted-datasets.gbif.org/ibol/ibol.zip"
-    # gene of interest (will be used to filter sequences)
-    gene:
-        - "COI-5P"
-    # phyla of interest (omit this in order to include all phyla)
-    phyla: []
-    # Percent identity to cluster seqs in the database by
-    pid: 1.0
-```
+### SINTAX, DADA2 and QIIME2 references
 
-### Gene types
-By default, only sequences named 'COI-5P' are included in the 
-final output. To modify this behaviour you can supply a config file in `yaml`
-format via `-c <path-to-configfile.yaml>`. For example, to also include 
-'COI-3P' sequences you can create a config file, _e.g._ named `config.yaml` with 
-these contents:
-
-```yaml
-database:
-  gene:
-    - 'COI-5P'
-    - 'COI-3P' 
-```
-
-Then run `coidb` as:
-
-```bash
-coidb -c config.yaml
-```
-
-### Phyla
-
-The default is to include sequences from all taxa. However, you can filter the 
-resulting sequences to only those from one or more phyla. For instance, to only
-include sequences from the phyla 'Arthropoda' and 'Chordata' you supply a 
-config file with these contents:
-
-```yaml
-database:
-  phyla:
-    - 'Arthropoda'
-    - 'Chordata' 
-```
-
-### Clustering
-
-After sequences have been filtered to the genes and phyla of interest they are
-clustered on a per-species (or BOLD `BIN` id where applicable) basis using 
-`vsearch`. By default this clustering is performed at 100% identity. To change
-this behaviour, to _e.g._ 95% identity make sure your config file contains:
-
-```yaml
-database:
-  pid: 0.95
-```
-
-## Command line options
-
-The `coidb` tool is a wrapper for a small snakemake workflow that handles
-all the downloading, filtering and clustering.
+* `sintax/coidb.sintax.{exclNA,inclNA}.fasta.gz`: These fasta files are compatible with the SINTAX classification tool implemented in [vsearch](https://github.com/torognes/vsearch) and have headers with the format:
 
 ```
-usage: coidb [-h] [-n] [-j CORES] [-f] [-u] [-c [CONFIG_FILE ...]] [--cluster-config CLUSTER_CONFIG] [--workdir WORKDIR] [-p] [-t]
-             [targets ...]
-
-positional arguments:
-  targets               File(s) to create or steps to run. If omitted, the full pipeline is run.
-
-options:
-  -h, --help            show this help message and exit
-  -n, --dryrun          Only print what to do, don't do anything [False]
-  -j CORES, --cores CORES
-                        Number of cores to run with [4]
-  -f, --force           Force workflow run
-  -u, --unlock          Unlock working directory
-  -c [CONFIG_FILE ...], --config-file [CONFIG_FILE ...]
-                        Path to configuration file
-  --cluster-config CLUSTER_CONFIG
-                        Path to cluster config (for running on SLURM)
-  --workdir WORKDIR     Working directory. Defaults to current dir
-  -p, --printshellcmds  Print shell commands
-  -t, --touch           Touch output files (mark them up to date without really changing them) instead of running their commands.
+>BPALB370-17;tax=k:Animalia,p:Arthropoda,c:Insecta,o:Lepidoptera,f:Lycaenidae,g:Thersamonia,s:Thersamonia_X,t:BOLD:AAF7702
 ```
+
+* `dada2/coidb.dada2.toGenus.{exclNA,inclNA}.fasta.gz`, `dada2/coidb.dada2.toSpecies.{exclNA,inclNA}.fasta.gz` and `dada2/coidb.dada2.addSpecies.{exclNA,inclNA}.fasta.gz`: These fasta files are compatible with the `assignTaxonomy` and `addSpecies` functions from [DADA2](https://benjjneb.github.io/dada2/assign.html).
+
+* `qiime2/coidb.qiime2.info.{exclNA,inclNA}.tsv.gz`: These TSV files can be used with QIIME2 to create a taxonomy artifact for use with the [feature-classifier](https://amplicon-docs.qiime2.org/en/latest/references/plugins/feature-classifier.html#q2-plugin-feature-classifier) plugin. Unzip the file then run `qiime tools import --type 'FeatureData[Taxonomy]' --input-format TSVTaxonomyFormat --input-path coidb.qiime2.inclNA.info.tsv --output-path taxonomy.qza`. The `coidb.clustered.fasta.gz` file can be used to import sequences with `qiime tools import --type 'FeatureData[Sequence]' --input-path coidb.clustered.fasta --output-path seqs.qza`.
 
 ## How it works
 
-Firstly sequence and taxonomic information for records in the BOLD database is 
-downloaded from the [GBIF Hosted Datasets](https://hosted-datasets.gbif.org/ibol/).
-GBIF processes taxonomic information from BOLD in order to resolve ambiguous 
-assignments for BOLD BINs. When there are conflicting assignments at a taxonomic 
-rank an 80% consensus rule is applied to keep _e.g._ a species level assignment
-if four out of five names in the BIN are equal [Kõljalg et al 2020](https://www.mdpi.com/2076-2607/8/12/1910/htm).
-This data is then filtered to only keep records annotated as 'COI-5P' and assigned
-to a BIN ID and duplicate entries are removed. 
+### Filtering
+Firstly, the input file is extracted and the TSV file with taxonomic information
+and sequence data for each record is identified. This TSV file is then filtered
+by:
 
-#### Taxonomy
-The taxonomic information obtained from GBIF is then parsed in order to extract
-species names to BOLD BINs. This is done by:
-1. find all BOLD BINs with a taxonomic assignment at genus level, these likely have
-species names assigned from GBIF (see methods for species assignment [here](https://www.mdpi.com/2076-2607/8/12/1910/htm))
-2. obtain all parent taxonomic ids for BOLD BINs from step 1 and use these to 
-look up the species name for the BOLD BINs. 
-3. For BOLD BINs where species name look-up failed in step 2, try to obtain 
-species name using the [GBIF API](https://www.gbif.org/developer/summary).
+1. Selecting a useful subset of columns
+2. Only keeping records with `COI-5P` in the `marker_code` column.
+3. Only keeping records assigned to a proper BOLD BIN (with the exception of prokaryotic sequences which are all kept).
+4. Removing records with sequences that are too short (as defined by the `--min-len` argument).
+5. Stripping any leading and trailing gap (`-`) characters
+6. Removing sequences with remaining gaps
+7. Removing sequences with non DNA characters.
 
-The taxonomic data is then searched for rows where missing values for ranks are 
-filled with the last known higher level rank, suffixed with `_X`. For instance,
+### Filling missing data
 
-| BOLD BIN     | kingdom   | phylum          | class | order       | family | genus | species |
-|--------------|-----------|-----------------|-------|-------------|--------|-------|---------|
-| BOLD:ACX1129 | Animalia  | Platyhelminthes | NaN   | Polycladida | NaN    | NaN   | NaN     |
-| BOLD:ACX6548 | Chromista | Ochrophyta      | NaN   | NaN         | NaN    | NaN   | NaN     |
+The filtered TSV file is then processed to fill in missing values for taxonomic
+ranks. Ranks with missing data is filled with the lowest assigned taxonomic
+label, suffixed with `_X`. For example:
+
+| processid    | kingdom   | phylum          | class | order       | family | genus | species | bin_uri      |
+|--------------|-----------|-----------------|-------|-------------|--------|-------|---------|--------------|
+| DUTCH124-19  | Animalia  | Platyhelminthes | None  | Polycladida | None   |  None |  None   | BOLD:ACC8697 |
+| AACTA1367-20 | Animalia  | Arthropoda      | None  |  None       | None   |  None |  None   | BOLD:AED1280 |
 
 becomes:
 
-| BOLD BIN     | kingdom   | phylum          | class             | order         | family         | genus           | species          |
-|--------------|-----------|-----------------|-------------------|---------------|----------------|-----------------|------------------|
-| BOLD:ACX1129 | Animalia  | Platyhelminthes | Platyhelminthes_X | Polycladida   | Polycladida_X  | Polycladida_XX  | Polycladida_XXX  |
-| BOLD:ACX6548 | Chromista | Ochrophyta      | Ochrophyta_X      | Ochrophyta_XX | Ochrophyta_XXX | Ochrophyta_XXXX | Ochrophyta_XXXXX |
+| processid    | kingdom   | phylum          | class | order       | family | genus | species | bin_uri      |
+|--------------|-----------|-----------------|-------|-------------|--------|-------|---------|--------------|
+| DUTCH124-19  | Animalia  | Platyhelminthes | Platyhelminthes_X  | Polycladida | Polycladida_X   |  Polycladida_XX |  Polycladida_XXX   | BOLD:ACC8697 |
+| AACTA1367-20 | Animalia  | Arthropoda      | Arthropoda_X  |  Arthropoda_XX       | Arthropoda_XXX   |  Arthropoda_XXXX |  Arthropoda_XXXXX   | BOLD:AED1280 |
 
-As you can see, an `X` is appended for each downstream rank with a missing assignment.
+### Fix non-unique taxa
 
-BOLD BINs are then screened for cases where there are more than 1 unique parent 
-lineage for the same taxonomic assignment. For example, the following taxonomic 
-information may be found for BOLD BINs with assignment 'Aphaenogaster' at the
-genus level.
+Some records in the BOLD data may have the same taxonomic labels at a specific
+rank, but with different labels for parent ranks. Take for example the
+`Hemineura` genus where records may have these conflicting labels for higher
+ranks:
 
-| kingdom  | phylym     | class       | order         | family        | genus         |
-|----------|------------|-------------|---------------|---------------|---------------|
-| Animalia | Animalia_X | Animalia_XX | Animalia_XXX  | Animalia_XXXX | Aphaenogaster |
-| Animalia | Arthropoda | Insecta     | Hymenoptera   | Formicidae    | Aphaenogaster |               
+| kingdom | phylum | class | order | family | genus |
+|---------|--------|-------|-------|--------|-------|
+| Animalia | Arthropoda | Insecta | Psocodea | Elipsocidae | Hemineura |
+| Protista | Rhodophyta | Florideophyceae | Ceramiales | Delesseriaceae | Hemineura |
 
-A check is first made to see if unique parent lineages can be obtained by 
-removing BINs that only have missing assignments for parent ranks up to and including 
-phylum. If that doesn't result in a unique parent lineage, the conflicting rank
-assignments are prefixed with the lowest assigned parent rank. 
+This is dealt with by either removing BOLD BINs that lack taxonomic information
+for higher ranks, or by prefixing the non-unique rank with the label of the higher taxonomic rank. In the example above, this would generate:
 
-For example, BOLD BINs with genus level assignment 'Paralagenidium' have both 
-`k_Chromista;p_Oomycota;c_Peronosporea;o_Peronosporales;f_Pythiaceae` and 
-`k_Chromista;p_Ochrophyta;c_Ochrophyta_X;o_Ochrophyta_XX;f_Ochrophyta_XXX` as parent
-lineages. Since these conflicts cannot be resolved by removing BINs (all BINs have
-assignments at phylum level), the taxa labels at genus and species level are prefixed
-with either `Pythiaceae_` or `Ochrophyta_XXX_`.
+| kingdom | phylum | class | order | family | genus |
+|---------|--------|-------|-------|--------|-------|
+| Animalia | Arthropoda | Insecta | Psocodea | Elipsocidae | Elipsocidae_Hemineura |
+| Protista | Rhodophyta | Florideophyceae | Ceramiales | Delesseriaceae | Delesseriaceae_Hemineura |
 
-#### Sequence processing
-Sequences are then processed to remove gap characters and leading and trailing 
-`N`s. After this, any sequences with remaining non-standard characters are removed.
-Sequences are then clustered at 100% identity using [vsearch](https://github.com/torognes/vsearch) 
-(Rognes _et al._ 2016). This clustering is done separately for sequences assigned 
-to each BIN ID.   
+### Consensus taxonomy
 
-### Step-by-step
+After these steps, a consensus taxonomy is calculated for BOLD BINs by taking
+into account the taxonomic information for all records in each BIN. For example, a BOLD BIN with records labelled:
 
-You can also run the `coidb` tool in steps, _e.g._ if you are only interested
-in some of the files or if you want to inspect the results before proceeding 
-to the next step. This is done using the positional argument `targets`. 
+| kingdom | phylum | class | order | family | genus | species |
+|---------|--------|-------|-------|--------|-------|---------|
+|  K |  P |  C |  O |  F |  G |  S |
+|  K |  P |  C |  O |  F |  G |  S |
+|  K |  P |  C |  O |  F |  G |  S |
+|  K |  P |  C |  O |  F |  G |  S |
+|  K |  P |  C |  O |  F |  G |  S2 |
+|  K |  P |  C |  O |  F |  G |  G_X |
+|  K |  P |  C |  O |  F |  G |  G_X |
+|  K |  P |  C |  O |  F |  G |  G_X |
+|  K |  P |  C |  O |  F |  G |  G_X |
 
-Valid targets are `download`, `filter` and `cluster`. 
+This BIN has 4 records labelled species `S`, 1 record labelled species `S2` and
+4 records with missing species labels (these were given the genus label suffixed
+with `_X`). Starting from species, 40% of records are labelled species `S`, 10%
+are labelled `S2` and 40% have ambiguous labels. Using a consensus threshold of
+80% (the default) we see that no consensus can be reached for this BIN at
+species level. Moving one step up in the hierarchy however gets us 100% of
+records labelled genus `G`. Consequently this BIN will receive a consensus
+taxonomy:
 
-#### Step 1: Download
-For example, to only
-download files from GBIF you can run:
+| kingdom | phylum | class | order | family | genus | species |
+|---------|--------|-------|-------|--------|-------|---------|
+| K | P | C | O | F | G | unresolved.G |
 
-```bash
-coidb download
-```
+The consensus generated with this approach is tagged with `inclNA` in the output
+files described above (see [Output](#output)).
 
-This should produce two files `bold_info.tsv` and `bold_seqs.txt` containing
-metadata and nucleotide sequences, respectively.
+Ignoring all records with `G_X` at rank=species means that there are 80% records
+with species `S` and 20% with species `S2`. The consensus taxonomy for the BIN
+would then become:
 
-#### Step 2: Filter
+| kingdom | phylum | class | order | family | genus | species |
+|---------|--------|-------|-------|--------|-------|---------|
+| K | P | C | O | F | G | S|
 
-To also filter the `bold_info.tsv` and `bold_seqs.txt` files (according to the 
-default 'COI-5P' gene or any other genes/phyla you've defined in the optional 
-config file) you can run:
+This is what the `exclNA` tag refers to in the output files described above (see
+[Output](#output)).
 
-```bash
-coidb filter
-```
-
-This filters sequences in `bold_seqs.txt` and entries in `bold_info.tsv` to 
-potential genes and phyla of interest, respectively. Entries are then merged
-so that only sequences with relevant information are kept. Output files from
-this step are `bold_filtered.fasta` and `bold_info_filtered.tsv`.
+> [!Note]
+> In previous versions of `coidb` the [GBIF backbone
+> taxonomy](https://www.gbif.org/dataset/d7dddbf4-2cf0-4f39-9b2a-bb099caae36c)
+> was used to set taxonomy of BOLD BINs. However, because the backbone data is
+> not up to date we do not recommend using this option at the moment. The
+> functionality is still kept so you can run `coidb` with the command line flag
+> `--gbif-backbone` if you wish.
 
 
-#### Step 3: Clustering
+### Clustering
 
-The final step clusters sequences in `bold_filtered.fasta` on a per-species 
-basis. This means that for each species, the sequences are gathered, 
-clustered with `vsearch` and only the representative sequences are kept. In this 
-step sequences can either have a species name or a BOLD `BIN` ID 
-(_e.g._ `BOLD:AAY5017`) and are treated as being equivalent.
+For BOLD BINs with more than 1 record after filtering sequences are clustered
+using `vsearch` at the identity threshold specified with `--vsearch-identity`.
+BINs with only 1 record are then added to the clustered results to generate the
+final `coidb.clustered.fasta.gz` output file.
 
-To run the clustering step, do:
+### Formatting
 
-```bash
-coidb cluster
-```
-
-The end result is a file `bold_clustered.fasta`.
-
-#### Step 4: Clean headers
-
-The `clean` step removes extra information from sequence headers generated as part of clustering. To run this step, do:
-
-```bash
-coidb clean
-```
-
-#### Step 5: Generate SINTAX/DADA2 formatted fasta
-
-To also get the SINTAX and/or DADA2 formatted fasta file, do:
-
-```bash
-coidb format_sintax
-```
-
-or 
-
-```bash
-coidb format_dada2
-```
+Finally, the consensus taxonomy and the filtered sequences are used to generate
+reference files compatible with the SINTAX algorithm (using `vsearch --sintax
+queries.fasta --db coidb.sintax.inclNA.fasta.gz ...`), [DADA2 taxonomic
+assignment](https://benjjneb.github.io/dada2/assign.html) (using files under
+`<results-dir>/dada2`) and [QIIME2 feature-classifier
+plugin](https://amplicon-docs.qiime2.org/en/latest/references/plugins/feature-classifier.html#q2-plugin-feature-classifier).

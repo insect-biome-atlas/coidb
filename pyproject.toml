@@ -1,5 +1,90 @@
+[project]
+name = "coidb"
+requires-python = ">=3.10"
+readme = "README.md"
+license = "MIT"
+keywords = []
+authors = [{ name = "John Sundh", email = "john.sundh@scilifelab.se" }]
+version = "0.6.0"
+
+[project.scripts]
+coidb = "coidb.cli:coidb"
+filter-records = "coidb.scripts.filter:main"
+fill-missing = "coidb.scripts.fill_missing:main"
+coidb-format = "coidb.scripts.format:main"
+consensus-taxonomy = "coidb.scripts.consensus_taxonomy:main"
+parse-backbone = "coidb.scripts.parse_backbone:main"
+match-names = "coidb.scripts.match_names:main"
+bold2fasta = "coidb.scripts.bold2fasta:main"
+batch-split-bins = "coidb.scripts.batch_split_bins:main"
+fix-nonunique-lineages = "coidb.scripts.fix_non_unique_lineages:main"
+coidb-stats = "coidb.scripts.stats:main"
+
+[project.urls]
+Documentation = "https://github.com/insect-biome-atlas/coidb#readme"
+Issues = "https://github.com/insect-biome-atlas/coidb/issues"
+Source = "https://github.com/insect-biome-atlas/coidb"
+
 [build-system]
-requires = [
-    "setuptools"
-]
-build-backend = "setuptools.build_meta"
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.pixi.workspace]
+channels = ["https://prefix.dev/pixi-build-backends", "https://prefix.dev/conda-forge", "bioconda"]
+platforms = ["linux-64", "osx-arm64", "osx-64"]
+preview = ["pixi-build"]
+version = "0.6.0"
+
+[dependency-groups]
+test = ["pytest"]
+
+[tool.pixi.dependencies]
+snk-cli = "*"
+snakemake = ">=9"
+python = "*"
+vsearch = "*"
+polars = "*"
+seqkit = "*"
+snakemake-executor-plugin-slurm = "*"
+pygbif = "*"
+tqdm = "*"
+graphviz = "*"
+conda = "*"
+pixi-inject = "*"
+
+[tool.pixi.environments]
+default = {features = [], solve-group = "default"}
+test = {features = ["test"], solve-group = "default"}
+
+[tool.pixi.tasks]
+env = { cmd = "pixi install --locked -e default"}
+build = { cmd = "pixi build --locked --path pyproject.toml", depends-on = ["env"]}
+install = { cmd = "pixi inject -p $CONDA_PREFIX --package coidb-*.conda", depends-on = ["build"]}
+
+
+[tool.pixi.feature.test.tasks]
+build_test = { cmd = "pixi build --locked --path pyproject.toml"}
+inject = { cmd = "pixi inject -p $CONDA_PREFIX --package coidb-*.conda", depends-on = ["build_test"]}
+test = { cmd = "pytest tests/test.py", depends-on=["inject"]}
+
+[tool.pixi.package]
+name = "coidb"
+
+[tool.pixi.package.build]
+backend = { name = "pixi-build-python", version = "0.4.*" }
+
+[tool.pixi.package.host-dependencies] 
+hatchling = "==1.26.3"
+
+[tool.pixi.package.run-dependencies]
+snk-cli = "*"
+snakemake = ">=9"
+python = "*"
+vsearch = "*"
+polars = "*"
+seqkit = "*"
+snakemake-executor-plugin-slurm = "*"
+pygbif = "*"
+tqdm = "*"
+graphviz = "*"
+conda = "*"
