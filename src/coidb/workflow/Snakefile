@@ -164,6 +164,26 @@ rule filter:
         """
 
 
+rule col_match:
+    input:
+        tsv=rules.filter.output.tsv,
+    output:
+        tsv=temp(os.path.join(config["output_dir"], "col.{rank}-matched.tsv")),
+        tsv_unrefined=temp(
+            os.path.join(config["output_dir"], "col.{rank}-matched.raw.tsv")
+        ),
+    log:
+        os.path.join(config["output_dir"], "_logs/col_match.{rank}.log"),
+    threads: 4
+    resources:
+        slurm_account=config["account"],
+    shell:
+        """
+        export POLARS_MAX_THREADS={threads}
+        match-names -i {input.tsv} -c {wildcards.rank} -p {threads} --unrefined_out {output.tsv_unrefined} -o {output.tsv}
+        """
+
+
 def fill_missing_input(wildcards):
     if wildcards.n == "backbone":
         return rules.parse_backbone.output[0]
