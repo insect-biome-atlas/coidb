@@ -8,17 +8,23 @@ from tqdm import tqdm
 import sys
 
 
-def col_match(
-    value, ranks=["kingdom", "phylum", "class", "order", "family", "genus", "species"]
-):
+def col_match(value):
+    """
+    Matches species names/bin URIs to Catalog of Life. Only returns a taxonomy
+    if the matching is exact.
+    """
+    ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
     res = species.name_backbone(
-        scientificName=value, checklistKey="7ddf754f-d193-4cc9-b351-99906754a03b"
+        scientificName=value,
+        checklistKey="7ddf754f-d193-4cc9-b351-99906754a03b",
+        strict=True,
+        verbose=True,
     )
     d = {}
     taxres = {"name": value}
     for rank in ranks:
         taxres[rank] = None
-    if not "classification" in res.keys():
+    if res["diagnostics"]["matchType"] != "EXACT":
         return taxres
     for item in res["classification"]:
         rank = item["rank"].lower()
@@ -32,40 +38,25 @@ def col_match(
     return taxres
 
 
-def refine(v, d=None):
+def get_true_name(name):
     res = species.name_backbone(
-        scientificName=v, checklistKey="7ddf754f-d193-4cc9-b351-99906754a03b"
+        scientificName=name,
+        strict=True,
+        checklistKey="7ddf754f-d193-4cc9-b351-99906754a03b",
+        verbose=True,
     )
-    try:
-        return d[v], d
-    except KeyError:
-        pass
-    refined = v
-    if not "classification" in res.keys():
-        return refined, d
+    if res["diagnostics"]["matchType"] != "EXACT":
+        return name
     classification_df = pl.DataFrame(res["classification"])
     rank = res["usage"]["rank"]
-    refined = classification_df.filter(pl.col("rank") == rank).item(0, 1)
-    d[v] = refined
-    return refined, d
-
-
-def refine_df(df):
-    columns = df.columns
-    refined_data = {}
-    for col in columns:
-        refined_data[col] = []
-    d = {}
-    for row in df.sort(columns[1:]).iter_rows():
-        refined_data["name"].append(row[0])
-        for i, value in enumerate(row[1:], start=1):
-            col = columns[i]
-            refined, d = refine(value, d)
-            refined_data[col].append(refined)
-    return pl.DataFrame(refined_data)
+    true_name = classification_df.filter(pl.col("rank") == rank).item(0, 1)
+    return true_name
 
 
 def get_unique(f, col="bin_uri"):
+    """
+    Return unique values for the column.
+    """
     info = pl.scan_csv(f, separator="\t")
     v = (
         (info.filter(~pl.col(col).str.contains(r"_X+$")).select(col).unique())
@@ -74,6 +65,44 @@ def get_unique(f, col="bin_uri"):
         .to_list()
     )
     return v
+
+
+def collapse_nulls(df):
+    """
+    Replace null values for higher ranks if all non-null values are the same.
+    Example:
+    "Animalia" "Arthropoda" "Arachnida"	"Trombidiformes" "Unionicolidae" "Unionicola" "Unionicola crassipes"
+    "Animalia" "Arthropoda" null	    "Trombidiformes" "Unionicolidae" "Unionicola" "Unionicola figuralis"
+    "Animalia"	null        null         null	         null            "Unionicola" "Unionicola trapezidens"
+
+    Result:
+    "Animalia" "Arthropoda" "Arachnida"	"Trombidiformes" "Unionicolidae" "Unionicola" "Unionicola crassipes"
+    "Animalia" "Arthropoda" "Arachnida" "Trombidiformes" "Unionicolidae" "Unionicola" "Unionicola figuralis"
+    "Animalia" "Arthropoda" "Arachnida"	"Trombidiformes" "Unionicolidae" "Unionicola" "Unionicola trapezidens"
+    """
+    ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
+    # Create a unique dataframe with the least amount of null values
+    uniq = (
+        df.drop_nulls("genus")
+        .select(ranks[0 : ranks.index("genus") + 1])
+        .unique()
+        .with_columns(nulls=pl.sum_horizontal(pl.col("*").is_null()))
+        .sort("nulls")
+        .head(1)
+        .drop("nulls")
+    )
+    collapse = True
+    for rank in ranks[0 : ranks.index("genus")]:
+        if df.drop_nulls(rank).n_unique(rank) > 1:
+            collapse = False
+    if collapse and df.unique("kingdom").height == 1:
+        return (
+            df.drop(ranks[0 : ranks.index("genus")])
+            .join(uniq, on="genus")
+            .select(["name"] + ranks)
+        )
+    else:
+        return df
 
 
 def main():
@@ -100,12 +129,6 @@ def main():
     )
     parser.add_argument(
         "-p", dest="cpus", type=int, default=1, help="Number of cpus to use"
-    )
-    parser.add_argument(
-        "--refine_partition",
-        type=str,
-        help="When refining names, partition data by this rank (default: family). Selecting a lower rank and giving more cpus can speed up runs.",
-        default="family",
     )
     parser.add_argument(
         "--refine_only",
@@ -139,24 +162,31 @@ def main():
             )
         matched_df = matches.select(["name"] + args.ranks)
         if args.unrefined_out:
-            sys.stderr.write(f"Writing unrefined table to {args.unrefined_out}\n")
+            sys.stderr.write(f"Writing matched table to {args.unrefined_out}\n")
             matched_df.write_csv(args.unrefined_out, separator="\t")
     else:
         sys.stderr.write(f"Only performing refinement of taxa in {args.infile}\n")
         matched_df = pl.read_csv(args.infile, separator="\t")
         matched_df.columns = ["name"] + matched_df.columns[1:]
         matched_df = matched_df.select(["name"] + args.ranks)
-    partitioned = matched_df.partition_by(args.refine_partition)
-    sys.stderr.write("Refining taxa names\n")
+    orig_null_counts = matched_df.drop("name").null_count()
+    sys.stderr.write("Missing values per rank:\n")
+    sys.stderr.write(f"{str(orig_null_counts)}\n")
+    partitioned = matched_df.partition_by("genus")
+    sys.stderr.write("Refining lineages per genera\n")
     with Pool(args.cpus) as p:
         refined_df = pl.concat(
             tqdm(
-                p.imap_unordered(refine_df, partitioned),
+                p.imap_unordered(collapse_nulls, partitioned, chunksize=1),
                 total=len(partitioned),
-                unit=f" {args.refine_partition} partitions",
+                unit=f" genera",
                 ncols=120,
                 leave=False,
                 desc="Refining",
-            )
+            ),
+            how="diagonal_relaxed",
         )
+    refined_null_counts = refined_df.drop("name").null_count()
+    sys.stderr.write("Missing values per rank after refinement:\n")
+    sys.stderr.write(f"{str(refined_null_counts)}\n")
     refined_df.write_csv(args.outfile, separator="\t")
