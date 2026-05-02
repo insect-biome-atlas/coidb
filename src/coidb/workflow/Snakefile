@@ -236,6 +236,10 @@ rule fix_nonunique:
     threads: 4
     resources:
         slurm_account=config["account"],
+    params:
+        id_col=lambda wildcards: "name" if wildcards.n == "col" else "bin_uri",
+    message:
+        "Fixing non-unique lineages for {wildcards.n}"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
