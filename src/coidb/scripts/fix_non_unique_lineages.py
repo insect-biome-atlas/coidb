@@ -36,23 +36,17 @@ def find_non_unique(df, ranks):
     return non_unique
 
 
-def check_parent_ranks(_df, group_ranks, regex):
-    """
-    This function checks the taxonomic labels of <group_ranks> for each row and
-    counts number of ranks that end in '_X' (any number of Xs) using a regex
-    pattern. If all ranks match the regex, the BOLD bin is added to the
-    bins_to_remove list which is finally returned.
-    """
-    bins_to_remove = []
-    rows = _df.select(["bin_uri"] + group_ranks)
-    for row in rows.iter_rows():
-        unassigned = sum([1 if regex.match(x) else 0 for x in row[2:]])
-        if unassigned == len(group_ranks) - 1:
-            bins_to_remove.append(row[0])
-    return bins_to_remove
+def find_bins_to_remove(df, group_ranks, id_col="bin_uri"):
+    rows = df.select([id_col] + group_ranks).with_columns(
+        assigned_ranks=len(group_ranks)
+        - pl.sum_horizontal(pl.col((group_ranks)).str.contains(r"_X+$"))
+    )
+    return (
+        rows.filter(pl.col("assigned_ranks") == 0).select(id_col).to_series().to_list()
+    )
 
 
-def fix_non_unique_lineages(df, non_unique, ranks):
+def fix_non_unique_lineages(df, non_unique, ranks, id_col="bin_uri", remove=False):
     """
     This function iterates the duplicated ranks/names and attempts to
     identify BINs that can be removed in order to make the
@@ -70,7 +64,6 @@ def fix_non_unique_lineages(df, non_unique, ranks):
     If removal of BINs assigned as in the first row is not enough to generate a
     unique lineage, then the conflicting taxlabels are prefixed with their parent taxa.
     """
-    regex = re.compile(".+(_[X]+)$")
     bins_to_remove = []
     for rank in ranks:
         try:
@@ -81,27 +74,27 @@ def fix_non_unique_lineages(df, non_unique, ranks):
             group_ranks = ranks[: ranks.index(rank)]
             parent_rank = ranks[ranks.index(rank) - 1]
             _df = df.filter(pl.col(rank) == t)
-            _bins_to_remove = check_parent_ranks(_df, group_ranks, regex)
-            if (
-                _df.filter(~pl.col("bin_uri").is_in(_bins_to_remove))
-                .group_by(group_ranks)
-                .len()
-                .height
-                == 1
-            ):
-                bins_to_remove += _bins_to_remove
-                sys.stderr.write(
-                    f"Removing {len(_bins_to_remove)} BINs for {rank}:{t}\n"
-                )
-            else:
-                sys.stderr.write(f"Prefixing {rank}:{t} with {parent_rank}\n")
-                df = df.with_columns(
-                    pl.when(pl.col(rank) == t)
-                    .then(pl.concat_str([parent_rank, rank], separator="_"))
-                    .otherwise(pl.col(rank))
-                    .alias(rank)
-                )
-    return df.filter(~pl.col("bin_uri").is_in(bins_to_remove))
+            if remove:
+                _bins_to_remove = find_bins_to_remove(_df, group_ranks, id_col)
+                if (
+                    _df.filter(~pl.col(id_col).is_in(_bins_to_remove))
+                    .unique(group_ranks)
+                    .height
+                    == 1
+                ):
+                    bins_to_remove += _bins_to_remove
+                    sys.stderr.write(
+                        f"Removing {len(_bins_to_remove)} features for {rank}:{t}\n"
+                    )
+                    continue
+            sys.stderr.write(f"Prefixing {rank}:{t} with {parent_rank}\n")
+            df = df.with_columns(
+                pl.when(pl.col(rank) == t)
+                .then(pl.concat_str([parent_rank, rank], separator="_"))
+                .otherwise(pl.col(rank))
+                .alias(rank)
+            )
+    return df.filter(~pl.col(id_col).is_in(bins_to_remove))
 
 
 def main():
@@ -113,6 +106,17 @@ def main():
         "--ranks",
         nargs="+",
         default=["kingdom", "phylum", "class", "order", "family", "genus", "species"],
+    )
+    parser.add_argument(
+        "--id_col",
+        type=str,
+        help="Column name containing identifier",
+        default="bin_uri",
+    )
+    parser.add_argument(
+        "--remove",
+        action="store_true",
+        help="Attempt to remove rows with only missing information for higher ranks in order to make lineages unique.",
     )
     args = parser.parse_args()
     df = pl.scan_csv(args.infile, separator="\t")
@@ -135,7 +139,9 @@ def main():
     )
     sys.stderr.write(f"{dups.height} records with non-unique lineages\n")
     sys.stderr.write("Fixing non-unique lineages\n")
-    unique_df = fix_non_unique_lineages(dups, non_unique, args.ranks)
+    unique_df = fix_non_unique_lineages(
+        dups, non_unique, args.ranks, args.id_col, args.remove
+    )
     pl.concat(
         [
             df.filter(
