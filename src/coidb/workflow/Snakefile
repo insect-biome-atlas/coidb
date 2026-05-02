@@ -20,7 +20,7 @@ localrules:
 
 
 wildcard_constraints:
-    n="backbone|coidb",
+    n="col|coidb",
     suffix="tsv|fasta",
     format="sintax|dada2.toGenus|dada2.toSpecies|dada2.addSpecies",
     tool="sintax|dada2",
