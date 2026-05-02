@@ -5,6 +5,97 @@ from argparse import ArgumentParser
 import sys
 
 
+def consolidate(orig_df, to_match_df, ranks=None):
+    if ranks is None:
+        ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
+    orig_df_unique = (
+        orig_df.select(
+            ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
+        )
+        .unique()
+        .collect()
+    )
+    joined = orig_df_unique.join(
+        to_match_df.collect(), left_on="species", right_on="name", how="left"
+    )
+    # create new columns with '_cons' suffix
+    consolidated = (
+        joined.with_columns(
+            # when BOLD kingdom is Bacteria, set _cons kingdom to Bacteria
+            # this fixes cases where for example speices are assigned to kingdom 'Pseudomonadati'
+            kingdom_cons=pl.when(pl.col("kingdom") == "Bacteria")
+            .then(pl.lit("Bacteria"))
+            # if BOLD kingdom is Protista, update from COL only if the COL
+            # labels are assigned unambiguously
+            # otherwise, use BOLD kingdom
+            .when(
+                (pl.col("kingdom") == "Protista")
+                & (~pl.col("kingdom_right").str.contains(r"_X+"))
+                & (pl.col("kingdom_right") != "unassigned")
+                & (pl.col("kingdom_right").is_not_null())
+            )
+            .then(pl.col("kingdom_right"))
+            .otherwise(pl.col("kingdom"))
+        )
+        .with_columns(
+            # if COL phylum is not ambiguous and kingdom is the same
+            phylum_cons=pl.when(
+                (~pl.col("phylum_right").str.contains(r"_X+$"))
+                & (pl.col("kingdom") == pl.col("kingdom_right"))
+            )
+            .then(pl.col("phylum_right"))
+            .otherwise(pl.col("phylum"))
+        )
+        .with_columns(
+            # if COL class is not ambiguous and phylum is the same
+            pl.when(
+                (~pl.col("class_right").str.contains(r"_X+$"))
+                & (pl.col("phylum") == pl.col("phylum_right"))
+            )
+            .then(pl.col("class_right"))
+            .otherwise(pl.col("class"))
+            .alias("class_cons")
+        )
+        .with_columns(
+            # if COL order is not ambiguous and class is the same
+            order_cons=pl.when(
+                (~pl.col("order_right").str.contains(r"_X+$"))
+                & (pl.col("class") == pl.col("class_right"))
+            )
+            .then(pl.col("order_right"))
+            .otherwise(pl.col("order"))
+        )
+        .with_columns(
+            # if COL family is not ambiguous and order is the same
+            family_cons=pl.when(
+                (~pl.col("family_right").str.contains(r"_X+$"))
+                & (pl.col("order") == pl.col("order_right"))
+            )
+            .then(pl.col("family_right"))
+            .otherwise(pl.col("family"))
+        )
+        .with_columns(
+            # if COL genus is not ambiguous and family is the same
+            genus_cons=pl.when(
+                (~pl.col("genus_right").str.contains(r"_X+$"))
+                & (pl.col("family") == pl.col("family_right"))
+            )
+            .then(pl.col("genus_right"))
+            .otherwise(pl.col("genus"))
+        )
+        .with_columns(
+            # if COL species is not ambiguous and genus is the same
+            species_cons=pl.when(
+                (~pl.col("species_right").str.contains(r"_X+$"))
+                & (pl.col("genus") == pl.col("genus_right"))
+            )
+            .then(pl.col("species_right"))
+            .otherwise(pl.col("species"))
+        )
+        .drop([f"{rank}_right" for rank in ranks])
+    )
+
+
 def closest(lst, K):
     """
     Returns the closest value to K from lst
