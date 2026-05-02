@@ -24,6 +24,11 @@ def col_match(value):
     taxres = {"name": value}
     for rank in ranks:
         taxres[rank] = None
+    if (
+        "alternatives" in res["diagnostics"].keys()
+        and len(res["diagnostics"]["alternatives"]) > 0
+    ):
+        return taxres
     if res["diagnostics"]["matchType"] != "EXACT":
         return taxres
     for item in res["classification"]:
