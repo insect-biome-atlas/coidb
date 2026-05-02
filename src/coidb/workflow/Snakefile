@@ -164,31 +164,36 @@ rule filter:
         """
 
 
+# This rules matches species names from BOLD to species names in Catalog of Life
 rule col_match:
     input:
         tsv=rules.filter.output.tsv,
     output:
-        tsv=temp(os.path.join(config["output_dir"], "col.{rank}-matched.tsv")),
+        tsv=temp(
+            os.path.join(config["temp_dir"], "catalog_of_life/species-matched.tsv")
+        ),
         tsv_unrefined=temp(
-            os.path.join(config["output_dir"], "col.{rank}-matched.raw.tsv")
+            os.path.join(config["temp_dir"], "catalog_of_life/species-matched.raw.tsv")
         ),
     log:
-        os.path.join(config["output_dir"], "_logs/col_match.{rank}.log"),
+        os.path.join(config["output_dir"], "_logs/col_match.log"),
     threads: 4
     resources:
         slurm_account=config["account"],
+    message:
+        "Matching BOLD species names to Catalog of Life"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
-        match-names -i {input.tsv} -c {wildcards.rank} -p {threads} --unrefined_out {output.tsv_unrefined} -o {output.tsv}
+        match-names -i {input.tsv} -c species -p {threads} --unrefined_out {output.tsv_unrefined} -o {output.tsv} > {log} 2>&1
         """
 
 
 def fill_missing_input(wildcards):
-    if wildcards.n == "backbone":
-        return rules.parse_backbone.output[0]
-    elif wildcards.n == "coidb":
+    if wildcards.n == "coidb":
         return rules.filter.output.tsv
+    elif wildcards.n == "col":
+        return rules.col_match.output.tsv
 
 
 rule fill_missing:
@@ -206,6 +211,8 @@ rule fill_missing:
     threads: 4
     resources:
         slurm_account=config["account"],
+    message:
+        "Filling missing ranks for {wildcards.n} data"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
