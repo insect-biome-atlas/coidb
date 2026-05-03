@@ -499,22 +499,3 @@ rule format_qiime2:
         export POLARS_MAX_THREADS={threads}
         coidb-format --fasta {input.fasta} --consensus {input.consensus} --format qiime2 --outfile {output} 2>{log}
         """
-
-
-def timestamp_input(wildcards):
-    input = [rules.filter.output.timestamp[0]]
-    if config["gbif_backbone"]:
-        input.append(rules.download_backbone.output.timestamp[0])
-    return input
-
-
-# This rule combines the timestamp files into a single file.
-rule concat_timestamps:
-    input:
-        timestamp_input,
-    output:
-        os.path.join(config["output_dir"], "timestamps.txt"),
-    shell:
-        """
-        cat {input} > {output}
-        """
