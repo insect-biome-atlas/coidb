@@ -19,18 +19,8 @@
 
 ## Overview
 
-The coidb package runs a Snakemake workflow under the hood which contains steps
-to filter the BOLD public data to only the COI-5P marker gene, remove leading
-and trailing gaps and sequences with internal gaps and ambiguous nucleotides. It
-also applies a length filtering and only keeps records assigned to a BOLD BIN.
-Steps are also taken to ensure that taxonomic lineages are unique by prefixing
-duplicated taxonomic labels or removing BOLD BINs with unassigned records. The
-filtered sequences are then dereplicated by clustering sequences within each
-BOLD BIN using vsearch. A consensus taxonomy is calculated using an 80%
-consensus threshold starting from species and moving up in the taxonomy tree. 
-
-Finally, fasta and tab separated files compatible with SINTAX, DADA2 and QIIME2
-are generated.
+The `coidb` package runs a Snakemake workflow under the hood. The graph below
+shows a simplified outline of the steps in the workflow.
 
 ```mermaid
 graph TD
@@ -62,6 +52,26 @@ graph TD
     11("Generate QIIME2 reference")
 
 ```
+
+First a user-supplied BOLD tarball supplied as input is extracted and the
+information in the tab-separated file in the tarball is filtered to only the
+COI-5P marker gene followed by removal of leading and trailing gaps and
+sequences with internal gaps and ambiguous nucleotides. A length filtering is
+applied (with a user-defined minimum length threshold) and only records assigned
+to a BOLD BIN are retained.
+
+Species names are then matched to the GBIF Catalogue of Life dataset, missing
+taxonomic information is filled and taxonomic lineages are made unique by
+prefixing duplicated taxonomic labels. 
+
+Sequences are then dereplicated by clustering sequences within each BOLD BIN
+using vsearch. 
+
+A consensus taxonomy is calculated using a user-defined consensus threshold starting
+from species and moving up in the taxonomy tree. 
+
+Finally, fasta and tab separated files compatible with SINTAX, DADA2 and QIIME2
+are generated.
 
 ## Installation
 
