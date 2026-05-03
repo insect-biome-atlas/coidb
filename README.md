@@ -33,12 +33,6 @@ Finally, fasta and tab separated files compatible with SINTAX, DADA2 and QIIME2
 are generated.
 
 ```mermaid
----
-config:
-  theme: redux
-  flowchart:
-    curve: basis
----
 graph TD
     0 --> 1
     1 --> 2
