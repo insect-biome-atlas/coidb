@@ -33,46 +33,40 @@ Finally, fasta and tab separated files compatible with SINTAX, DADA2 and QIIME2
 are generated.
 
 ```mermaid
+---
+config:
+  theme: redux
+  flowchart:
+    curve: basis
+---
 graph TD
-    8 --> 0
-    1 --> 0
-    4 --> 0
-    11 --> 0
-    10 --> 1
-    5 --> 1
-    2 --> 1
-    3 --> 2
-    7 --> 3
-    11 --> 3
-    1 --> 4
-    12 --> 4
-    5 --> 4
-    6 --> 5
-    2 --> 5
-    2 --> 6
-    11 --> 7
-    9 --> 8
+    0 --> 1
+    1 --> 2
+    2 --> 3
+    3 --> 4
+    4 --> 5
+    4 --> 7
+    7 --> 8
+    4 --> 8
     5 --> 8
-    12 --> 8
+    7 --> 9
     5 --> 9
-    12 --> 10
     5 --> 10
-    13 --> 12
-    2 --> 12
-    0["all"]
-    1["gzip"]
-    2["fix_nonunique"]
-    3["fill_missing"]
-    4["stats"]
-    5["calculate_consensus"]
-    6["consolidate_names"]
-    7["gbif_match"]
-    8["format"]
-    9["generate_kv_file"]
-    10["format_qiime2"]
-    11["filter"]
-    12["collect_vsearch"]
-    13["vsearch"]
+    7 --> 10
+    5 --> 11
+    7 --> 11
+    0("Extract BOLD tarball")
+    1("Filter BOLD data")
+    2("GBIF match species")
+    3("Fill missing values")
+    4("Fix non-unique lineages")
+    5("Calculate taxonomic consensus")
+    7("Cluster sequences per BOLD BIN")
+    8("Calculate statistics")
+    9("Generate SINTAX reference")
+    10("Generate DADA2 reference")
+    11("Generate QIIME2 reference")
+
 ```
 
 ## Installation
