@@ -63,7 +63,7 @@ install = { cmd = "pixi inject -p $CONDA_PREFIX --package coidb-*.conda", depend
 
 
 [tool.pixi.feature.test.tasks]
-build_test = { cmd = "pixi build --locked --path pyproject.toml"}
+build_test = { cmd = "pixi build --locked --clean --path pyproject.toml"}
 inject = { cmd = "pixi inject -p $CONDA_PREFIX --package coidb-*.conda", depends-on = ["build_test"]}
 test = { cmd = "pytest tests/test.py", depends-on=["inject"]}
 
