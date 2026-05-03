@@ -24,7 +24,7 @@ cli:
     default: "tmp"
   gbif_backbone:
     type: boolean
-    help: "Use GBIF backbone to infer consensus taxonomy for BOLD BINs"
+    help: "Match BOLD species name to GBIF backbone using pygbif package"
     default: False
   consensus_threshold:
     type: int
