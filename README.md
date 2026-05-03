@@ -32,6 +32,49 @@ consensus threshold starting from species and moving up in the taxonomy tree.
 Finally, fasta and tab separated files compatible with SINTAX, DADA2 and QIIME2
 are generated.
 
+```mermaid
+graph TD
+    8 --> 0
+    1 --> 0
+    4 --> 0
+    11 --> 0
+    10 --> 1
+    5 --> 1
+    2 --> 1
+    3 --> 2
+    7 --> 3
+    11 --> 3
+    1 --> 4
+    12 --> 4
+    5 --> 4
+    6 --> 5
+    2 --> 5
+    2 --> 6
+    11 --> 7
+    9 --> 8
+    5 --> 8
+    12 --> 8
+    5 --> 9
+    12 --> 10
+    5 --> 10
+    13 --> 12
+    2 --> 12
+    0["all"]
+    1["gzip"]
+    2["fix_nonunique"]
+    3["fill_missing"]
+    4["stats"]
+    5["calculate_consensus"]
+    6["consolidate_names"]
+    7["gbif_match"]
+    8["format"]
+    9["generate_kv_file"]
+    10["format_qiime2"]
+    11["filter"]
+    12["collect_vsearch"]
+    13["vsearch"]
+```
+
 ## Installation
 
 ### Install with pixi (recommended)
@@ -151,13 +194,13 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
 ```bash
 --input-file       -i PATH        Input tar.gz archive dowloaded from BOLD.
 --output-dir       -o PATH        Folder to store database files in [default: results]
---account          -A TEXT        SLURM compute account [default: None]
 --temp-dir            PATH        Folder for temporary files [default: tmp]
---gbif-backbone                   Use GBIF backbone to infer consensus taxonomy for BOLD BINs
+--account          -A TEXT        SLURM compute account [default: None]
+--gbif-backbone                   Match BOLD species name to GBIF backbone using pygbif package
 --consensus-threshold INTEGER     Threshold (in %) when calculating consensus taxonomy [default: 80]
 --consensus-method    [rank|full] Method to use when calculating consensus [default: rank]
---vsearch-identity    FLOAT       Identity at which to cluster sequences per BIN [default: 1.0]
 --ranks               TEXT        Ranks to use for calculating consensus and generating fastas [default: kingdom, phylum, class, order, family, genus, species]
+--vsearch-identity    FLOAT       Identity at which to cluster sequences per BIN [default: 1.0]
 --min-len             INTEGER     Minimum length of sequences to include [default: 500]
 --batch-size          INTEGER     Number of BOLD BINs per batch for running vsearch [default: 50000]
 ```
@@ -167,13 +210,14 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
   data](#obtain-data) below). 
 * The `--output-dir` or `-o` argument is a directory in which the output from
   `coidb` will be stored (see details under [Output](#output) below).
-* The `--account` or `-A` argument sets a compute account for running on SLURM
-  clusters (see [Cluster execution](#cluster-execution) below).
 * The `--temp-dir` argument sets a directory to use for storing temporary
   output. This directory can be deleted once `coidb` finishes.
-* The `--gbif-backbone` argument instructs `coidb` to use the GBIF backbone
-  taxonomy to infer taxonomic information for BOLD BINs. Note that this option
-  is currently not reliable because of outdated GBIF data.
+* The `--account` or `-A` argument sets a compute account for running on SLURM
+  clusters (see [Cluster execution](#cluster-execution) below).
+* The `--gbif-backbone` argument instructs `coidb` to match species names from
+  BOLD to the [GBIF Catalogue of Life
+  dataset](https://www.gbif.org/dataset/7ddf754f-d193-4cc9-b351-99906754a03b)
+  and use the information to calculate a taxonomic consensus for BOLD BINs.
 * The `--consensus-threshold` specifies a threshold in percent when calculating
   consensus taxonomies for BOLD BINs. 
 * The `--consensus-method` argument specifies how the consensus taxonomy is
@@ -184,12 +228,12 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
   the BOLD BIN. With `full`, a consensus is applied by taking into account the
   parent lineages at each rank, so starting with all labels from
   kingdom->species, then kingdom->genus etc.
-* The `--vsearch-identity` argument specifies the identity threshold to use when
-  clustering sequences with vsearch. The default is `1.0` meaning sequences are
-  clustered at 100% identity.
 * The `--ranks` argument specifies what taxonomic ranks to use. This applies
   both to what ranks are included in the final output and what ranks are used to
   calculate the consensus taxonomy.
+* The `--vsearch-identity` argument specifies the identity threshold to use when
+  clustering sequences with vsearch. The default is `1.0` meaning sequences are
+  clustered at 100% identity.
 * The `--min-len` argument sets a minimum length for sequences to include in the
   final output.
 * The `--batch-size` argument sets the number of BOLD bins to process with
@@ -197,7 +241,9 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
   graph by splitting the input sequences into batches with `batch-size` number
   of BOLD bins per file.
 
-In addition to these command line arguments there are some arguments that define how `coidb` runs on your system and which are similar to how you typically interact with Snakemake workflows:
+In addition to these command line arguments there are some arguments that define
+how `coidb` runs on your system and which are similar to how you typically
+interact with Snakemake workflows:
 
 ```bash
 --config             FILE     Path to snakemake config file. Overrides existing workflow configuration. [default: None] 
