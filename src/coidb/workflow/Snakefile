@@ -244,7 +244,7 @@ rule consolidate_names:
         "Consolidating taxonomy based on Catalog of Life matches"
     shell:
         """
-        consolidate-names -i {input.coidb} -I {input}
+        consolidate-names -i {input.coidb} -m {input.gbif} --filter_strategy {wildcards.filter_strategy} -o {output.tsv}
         """
 
 
