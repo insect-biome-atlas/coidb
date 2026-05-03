@@ -160,7 +160,7 @@ rule filter:
 
 
 # This rules matches species names from BOLD to species names in Catalog of Life
-rule col_match:
+rule gbif_match:
     input:
         tsv=rules.filter.output.tsv,
     output:
@@ -172,7 +172,7 @@ rule col_match:
     resources:
         slurm_account=config["account"],
     message:
-        "Matching BOLD species names to Catalog of Life"
+        "Matching BOLD species names to GBIF"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
@@ -241,7 +241,7 @@ rule consolidate_names:
     log:
         "<logs>/consolidate_names.{filter_strategy}.log",
     message:
-        "Consolidating taxonomy based on Catalog of Life matches"
+        "Consolidating taxonomy based on GBIF matches"
     shell:
         """
         consolidate-names -i {input.coidb} -m {input.gbif} --filter_strategy {wildcards.filter_strategy} -o {output.tsv}
@@ -433,7 +433,7 @@ rule generate_kv_file:
     resources:
         slurm_account=config["account"],
     message:
-        "Generate key-value file for {wildcards.tool} ({wildcards.format} {wildcards.s})"
+        "Generate key-value file for {wildcards.tool} ({wildcards.format} {wildcards.consensus_type} {wildcards.s})"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
