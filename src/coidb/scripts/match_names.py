@@ -8,7 +8,7 @@ from tqdm import tqdm
 import sys
 
 
-def col_match(value):
+def gbif_match(value):
     """
     Matches species names/bin URIs to Catalog of Life. Only returns a taxonomy
     if the matching is exact.
@@ -156,7 +156,7 @@ def main():
             matches = pl.DataFrame(
                 list(
                     tqdm(
-                        p.imap_unordered(col_match, unique_ids),
+                        p.imap_unordered(gbif_match, unique_ids),
                         total=len(unique_ids),
                         unit=f" {args.col}",
                         ncols=120,
