@@ -283,7 +283,7 @@ rule calculate_consensus:
         """
         export POLARS_MAX_THREADS={threads}
         consensus-taxonomy -i {input.tsv} -o {output.tsv} \
-            {params.bb} -r {params.ranks} -m {params.method} \
+            -r {params.ranks} -m {params.method} \
             {params.exclude_missing} -t {params.threshold} -p {threads} 2>{log}
         """
 
