@@ -20,9 +20,10 @@ localrules:
 
 
 wildcard_constraints:
-    n="col|coidb",
+    n="gbif|coidb",
     suffix="tsv|fasta",
     format="sintax|dada2.toGenus|dada2.toSpecies|dada2.addSpecies",
+    consensus_type="coidb|gbif.species-complete|gbif.complete",
     tool="sintax|dada2",
     s="inclNA|exclNA",
 
