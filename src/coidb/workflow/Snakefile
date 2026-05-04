@@ -233,8 +233,8 @@ rule fix_nonunique:
 # Life.
 rule consolidate_names:
     input:
-        coidb="<results>/coidb/coidb.info.tsv",
-        gbif="<results>/gbif/gbif.info.tsv",
+        coidb="<results>/coidb/coidb.info.tsv.gz",
+        gbif="<results>/gbif/gbif.info.tsv.gz",
     output:
         tsv="<results>/consolidated/{filter_strategy}.tsv",
     log:
