@@ -251,11 +251,11 @@ rule consolidate_names:
 
 def consensus_input(wildcards):
     if wildcards.consensus_type == "coidb":
-        return "<results>/coidb/coidb.info.tsv"
+        return "<results>/coidb/coidb.info.tsv.gz"
     elif wildcards.consensus_type == "gbif.species-complete":
-        return "<results>/consolidated/species-complete.tsv"
+        return "<results>/consolidated/species-complete.tsv.gz"
     elif wildcards.consensus_type == "gbif.complete":
-        return "<results>/consolidated/complete.tsv"
+        return "<results>/consolidated/complete.tsv.gz"
 
 
 # This rule calculates a consensus taxonomy for BOLD BINs. It uses as input
