@@ -12,16 +12,16 @@ cli:
     short: "o"
     help: "Folder to store database files in"
     default: "results"
+  temp_dir:
+    type: path
+    help: "Folder for temporary files"
+    default: "tmp"
   account:
     short: "A"
     type: string
     help: "Compute account id for running on SLURM cluster"
     default: ""
     required: False
-  temp_dir:
-    type: path
-    help: "Folder for temporary files"
-    default: "tmp"
   gbif_backbone:
     type: boolean
     help: "Match BOLD species name to GBIF backbone using pygbif package"
@@ -37,14 +37,14 @@ cli:
       - rank
       - full
     default: rank
-  vsearch_identity:
-    type: float
-    help: "Identity at which to cluster sequences per BIN"
-    default: 1.0
   ranks:
     type: list[str]
     help: Ranks to use for calculating consensus and generating fastas
     default: ["kingdom","phylum","class","order","family","genus","species"]
+  vsearch_identity:
+    type: float
+    help: "Identity at which to cluster sequences per BIN"
+    default: 1.0
   min_len:
     type: int
     help: "Minimum length of sequences to include"
