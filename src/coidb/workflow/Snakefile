@@ -385,7 +385,7 @@ rule collect_vsearch:
         export POLARS_MAX_THREADS={threads}
         exec &>{log}
         bold2fasta -i {input.tsv} -o singles.fasta --single --low_memory
-        cat {input.fasta} singles.fasta | gzip -c > {output.fasta}
+        cat {input.fasta} singles.fasta | seqkit seq -j {threads} -u -o {output.fasta}
         """
 
 
