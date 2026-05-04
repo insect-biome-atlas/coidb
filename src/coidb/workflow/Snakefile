@@ -325,7 +325,7 @@ rule vsearch:
         "<logs>/vsearch_logs/batch_{batch_id}.log",
     shadow:
         "minimal"
-    threads: 1
+    threads: 4
     resources:
         slurm_account=config["account"],
     params:
