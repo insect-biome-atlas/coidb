@@ -239,6 +239,8 @@ rule consolidate_names:
         tsv="<results>/consolidated/{filter_strategy}.tsv",
     log:
         "<logs>/consolidate_names.{filter_strategy}.log",
+    resources:
+        slurm_account=config["account"],
     message:
         "Consolidating taxonomy based on GBIF matches"
     shell:
