@@ -5,7 +5,7 @@ readme = "README.md"
 license = "MIT"
 keywords = []
 authors = [{ name = "John Sundh", email = "john.sundh@scilifelab.se" }]
-version = "0.6.0"
+version = "0.7.0"
 
 [project.scripts]
 coidb = "coidb.cli:coidb"
