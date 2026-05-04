@@ -22,7 +22,6 @@ localrules:
     extract_input,
     gzip,
     collect_vsearch,
-    concat_timestamps,
 
 
 wildcard_constraints:
