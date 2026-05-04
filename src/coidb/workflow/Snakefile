@@ -268,7 +268,7 @@ rule calculate_consensus:
         tsv=temp("<results>/consensus_taxonomy/{consensus_type}.{s}.tsv"),
     log:
         "<logs>/calculate_consensus.{consensus_type}.{s}.log",
-    threads: 1
+    threads: 4
     resources:
         slurm_account=config["account"],
     params:
