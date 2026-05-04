@@ -425,9 +425,11 @@ def get_kv_format(wildcards):
 
 rule generate_kv_file:
     input:
-        rules.calculate_consensus.output.tsv,
+        tsv="<results>/consensus_taxonomy/{consensus_type}.{s}.tsv.gz",
+        fasta=rules.collect_vsearch.output.fasta,
     output:
         txt=temp("<results>/{tool}/{format}.{consensus_type}.{s}.txt"),
+        ids=temp("<results>/{tool}/{format}.{consensus_type}.{s}.ids"),
     log:
         "<logs>/generate_kv_file.{tool}.{format}.{consensus_type}.{s}.txt",
     threads: 1
@@ -438,7 +440,11 @@ rule generate_kv_file:
     shell:
         """
         export POLARS_MAX_THREADS={threads}
-        coidb-format --consensus {input} --outfile {output} --format {wildcards.format} 2>{log}
+        coidb-format --fasta {input.fasta} \
+            --consensus {input.tsv} \
+            --outfile {output.txt} \
+            --idfile {output.ids} \
+            --format {wildcards.format} 2>{log}
         """
 
 
