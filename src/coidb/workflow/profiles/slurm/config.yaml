@@ -1,12 +1,15 @@
 default-resources: 
   slurm_partition: <your-slurm-partition>
-  runtime: 30
+  runtime: '1h'
   mem_mb: 2000
 
 
 set-resources:
   filter:
     mem_mb: 24000
+  gbif_match:
+    mem_mb: 4000
+    runtime: '6h'
   fill_missing:
     mem_mb: 4000
   fix_nonunique:
@@ -16,28 +19,24 @@ set-resources:
   batch_multi_record_bins:
     runtime: 120
   vsearch:
-    runtime: 600
     mem_mb: 8000
-  add_to_vsearch:
+  collect_vsearch:
     mem_mb: 4000
-  parse_backbone:
+  format:
     mem_mb: 4000
-  format_sintax:
-    mem_mb: 24000
-  format_dada2:
-    mem_mb: 24000
+    runtime: '12h'
+  generate_kv_file:
+    mem_mb: 4000
   format_qiime2:
     mem_mb: 24000
 
 set-threads:
   filter: 10
-  multi_record_bins: 10
+  gbif_match: 10
   fix_nonunique: 10
   calculate_consensus: 10
-  format_sintax: 10
-  format_dada2: 10
-  format_qiime2: 10
-
+  format: 4
+  format_qiime2: 4
 
 printshellcmds: False
 local-cores: 1
