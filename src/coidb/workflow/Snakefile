@@ -464,8 +464,8 @@ def get_seqkit_pattern(wildcards):
 rule format:
     input:
         kv_file=rules.generate_kv_file.output.txt,
+        ids=rules.generate_kv_file.output.ids,
         fasta=rules.collect_vsearch.output.fasta,
-        consensus=rules.calculate_consensus.output.tsv,
     output:
         fasta="<results>/{tool}/{consensus_type}.{format}.{s}.fasta.gz",
     log:
