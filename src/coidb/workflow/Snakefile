@@ -245,7 +245,7 @@ rule consolidate_names:
         "Consolidating taxonomy based on GBIF matches"
     shell:
         """
-        consolidate-names -i {input.coidb} -m {input.gbif} --filter_strategy {wildcards.filter_strategy} -o {output.tsv}
+        consolidate-names -i {input.coidb} -m {input.gbif} --filter_strategy {wildcards.filter_strategy} -o {output.tsv} >{log} 2>&1
         """
 
 
