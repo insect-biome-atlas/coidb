@@ -479,10 +479,11 @@ rule format:
             " {kv}" if wildcards.format == "dada2.addSpecies" else "{kv}"
         ),
     message:
-        "Generate DADA2 format fasta files"
+        "Generate {wildcards.tool} ({wildcards.consensus_type}/{wildcards.format}/{wildcards.s}) fasta files"
     shell:
         """
-        seqkit replace -j {threads} -p {params.pattern} -r '{params.replace}' -k {input.kv_file} -o {output.fasta} {input.fasta} >{log} 2>&1
+        exec &>{log}
+        seqkit grep -j {threads} -f {input.ids} {input.fasta} | seqkit replace -j {threads} -p {params.pattern} -r '{params.replace}' -k {input.kv_file} -o {output.fasta}
         """
 
 
