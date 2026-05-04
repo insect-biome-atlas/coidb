@@ -296,7 +296,7 @@ rule calculate_consensus:
 # argument.
 checkpoint batch_multi_record_bins:
     input:
-        tsv="<results>/coidb/coidb.info.tsv",
+        tsv="<results>/coidb/coidb.info.tsv.gz",
     output:
         directory("<temp_dir>/_batch"),
     log:
@@ -368,7 +368,7 @@ def get_vsearch_fastas(wildcards):
 rule collect_vsearch:
     input:
         fasta=get_vsearch_fastas,
-        tsv="<results>/coidb/coidb.info.tsv",
+        tsv="<results>/coidb/coidb.info.tsv.gz",
     output:
         fasta="<results>/coidb/coidb.clustered.fasta.gz",
     log:
@@ -394,7 +394,7 @@ rule stats:
     input:
         fasta=rules.collect_vsearch.output.fasta,
         tsv="<results>/coidb/coidb.info.tsv.gz",
-        consensus=rules.calculate_consensus.output,
+        consensus="<results>/consensus_taxonomy/{consensus_type}.{s}.tsv.gz",
     output:
         "<results>/stats/{consensus_type}.{s}.txt",
     log:
@@ -485,7 +485,7 @@ rule format:
 rule format_qiime2:
     input:
         fasta=rules.collect_vsearch.output.fasta,
-        consensus=rules.calculate_consensus.output.tsv,
+        consensus="<results>/consensus_taxonomy/{consensus_type}.{s}.tsv.gz",
     output:
         temp("<results>/qiime2/{consensus_type}.qiime2.info.{s}.tsv"),
     log:
