@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from multiprocessing import get_context
 from pygbif import species
 import polars as pl
 from multiprocessing import Pool
@@ -8,29 +9,50 @@ from tqdm import tqdm
 import sys
 
 
-def gbif_match(value):
+def check_alternatives(alternatives, confidence):
+    for a in alternatives:
+        conf = a["diagnostics"]["confidence"]
+        if conf >= confidence:
+            return True
+    return False
+
+
+def gbif_match(
+    value,
+    rank="species",
+    ranks=None,
+    strict=True,
+    checklist_key="7ddf754f-d193-4cc9-b351-99906754a03b",
+):
     """
     Matches species names/bin URIs to Catalog of Life. Only returns a taxonomy
     if the matching is exact.
     """
-    ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
+    # sleep(0.1)
+    if ranks is None:
+        ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
     res = species.name_backbone(
         scientificName=value,
-        checklistKey="7ddf754f-d193-4cc9-b351-99906754a03b",
-        strict=True,
+        checklistKey=checklist_key,
+        strict=strict,
+        taxonRank=rank,
         verbose=True,
     )
     d = {}
     taxres = {"name": value}
     for rank in ranks:
         taxres[rank] = None
+    if res["diagnostics"]["matchType"] != "EXACT":
+        return pl.DataFrame(taxres)
+    confidence = res["diagnostics"]["confidence"]
     if (
         "alternatives" in res["diagnostics"].keys()
         and len(res["diagnostics"]["alternatives"]) > 0
     ):
-        return taxres
-    if res["diagnostics"]["matchType"] != "EXACT":
-        return taxres
+        alternatives = res["diagnostics"]["alternatives"]
+        equal_best = check_alternatives(alternatives, confidence)
+        if equal_best:
+            return pl.DataFrame(taxres)
     for item in res["classification"]:
         rank = item["rank"].lower()
         name = item["name"]
@@ -40,22 +62,7 @@ def gbif_match(value):
             taxres[rank] = d[rank]
         except KeyError:
             continue
-    return taxres
-
-
-def get_true_name(name):
-    res = species.name_backbone(
-        scientificName=name,
-        strict=True,
-        checklistKey="7ddf754f-d193-4cc9-b351-99906754a03b",
-        verbose=True,
-    )
-    if res["diagnostics"]["matchType"] != "EXACT":
-        return name
-    classification_df = pl.DataFrame(res["classification"])
-    rank = res["usage"]["rank"]
-    true_name = classification_df.filter(pl.col("rank") == rank).item(0, 1)
-    return true_name
+    return pl.DataFrame(taxres)
 
 
 def get_unique(f, col="bin_uri"):
@@ -72,7 +79,7 @@ def get_unique(f, col="bin_uri"):
     return v
 
 
-def collapse_nulls(df):
+def collapse_nulls(df, partition_rank="genus", ranks=None):
     """
     Replace null values for higher ranks if all non-null values are the same.
     Example:
@@ -85,29 +92,48 @@ def collapse_nulls(df):
     "Animalia" "Arthropoda" "Arachnida" "Trombidiformes" "Unionicolidae" "Unionicola" "Unionicola figuralis"
     "Animalia" "Arthropoda" "Arachnida"	"Trombidiformes" "Unionicolidae" "Unionicola" "Unionicola trapezidens"
     """
-    ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
+    if ranks is None:
+        ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
     # Create a unique dataframe with the least amount of null values
     uniq = (
-        df.drop_nulls("genus")
-        .select(ranks[0 : ranks.index("genus") + 1])
+        df.drop_nulls(partition_rank)
+        .select(ranks[0 : ranks.index(partition_rank) + 1])
         .unique()
         .with_columns(nulls=pl.sum_horizontal(pl.col("*").is_null()))
         .sort("nulls")
         .head(1)
         .drop("nulls")
     )
-    collapse = True
-    for rank in ranks[0 : ranks.index("genus")]:
-        if df.drop_nulls(rank).n_unique(rank) > 1:
-            collapse = False
-    if collapse and df.unique("kingdom").height == 1:
-        return (
-            df.drop(ranks[0 : ranks.index("genus")])
-            .join(uniq, on="genus")
-            .select(["name"] + ranks)
-        )
-    else:
+    # require that the kingdom has only one unique non-null label
+    if df.drop_nulls("kingdom").unique("kingdom").height > 1:
         return df
+    # iterate the ranks
+    for rank in ranks[0 : ranks.index(partition_rank)]:
+        # if there are more than one unique non-null taxlabel for the rank,
+        # return the original df
+        if df.drop_nulls(rank).n_unique(rank) > 1:
+            return df
+    # return the collapsed df
+    return (
+        df.drop(ranks[0 : ranks.index(partition_rank)])
+        .join(uniq, on=partition_rank)
+        .select(["name"] + ranks)
+    )
+
+
+def refine_worker(arg):
+    df, partition_rank, ranks = arg
+    return collapse_nulls(df=df, partition_rank=partition_rank, ranks=ranks)
+
+
+def worker(arg):
+    """
+    Helper function allowing more than 1 argument to be passed.
+    """
+    value, rank, ranks, strict, checklist_key = arg
+    return gbif_match(
+        value=value, rank=rank, ranks=ranks, strict=strict, checklist_key=checklist_key
+    )
 
 
 def main():
@@ -147,25 +173,42 @@ def main():
         help="Ranks to write taxonomic information for",
         default=["kingdom", "phylum", "class", "order", "family", "genus", "species"],
     )
+    parser.add_argument("--strict", action="store_true", help="Use strict matching")
+    parser.add_argument(
+        "--checklist_key",
+        type=str,
+        help="Checklist key to use for matching",
+        default="7ddf754f-d193-4cc9-b351-99906754a03b",
+    )
     args = parser.parse_args()
     if not args.refine_only:
         sys.stderr.write(f"Reading unique values for {args.col} from {args.infile}\n")
         unique_ids = get_unique(args.infile, args.col)
         sys.stderr.write(f"{len(unique_ids)} unique values loaded\n")
-        with Pool(args.cpus) as p:
-            matches = pl.DataFrame(
-                list(
-                    tqdm(
-                        p.imap_unordered(gbif_match, unique_ids),
-                        total=len(unique_ids),
-                        unit=f" {args.col}",
-                        ncols=120,
-                        leave=False,
-                        desc=f"Matching {args.col} to Catalog of Life",
-                    )
+        with get_context("spawn").Pool(args.cpus) as p:
+            df_list = list(
+                tqdm(
+                    p.imap_unordered(
+                        worker,
+                        (
+                            (
+                                value,
+                                args.col,
+                                args.ranks,
+                                args.strict,
+                                args.checklist_key,
+                            )
+                            for value in unique_ids
+                        ),
+                    ),
+                    unit=f" {args.col}",
+                    leave=False,
+                    desc=f"Matching {args.col} names to GBIF",
+                    total=len(unique_ids),
+                    ncols=120,
                 )
             )
-        matched_df = matches.select(["name"] + args.ranks)
+        matched_df = pl.concat(df_list).select(["name"] + args.ranks)
         if args.unrefined_out:
             sys.stderr.write(f"Writing matched table to {args.unrefined_out}\n")
             matched_df.write_csv(args.unrefined_out, separator="\t")
@@ -177,20 +220,24 @@ def main():
     orig_null_counts = matched_df.drop("name").null_count()
     sys.stderr.write("Missing values per rank:\n")
     sys.stderr.write(f"{str(orig_null_counts)}\n")
-    partitioned = matched_df.partition_by("genus")
-    sys.stderr.write("Refining lineages per genera\n")
-    with Pool(args.cpus) as p:
-        refined_df = pl.concat(
+    partition_rank = args.ranks[args.ranks.index(args.col) - 1]
+    partitioned = matched_df.partition_by(partition_rank)
+    sys.stderr.write(f"Refining lineages per {partition_rank}\n")
+    with get_context("spawn").Pool(args.cpus) as p:
+        refined_list = list(
             tqdm(
-                p.imap_unordered(collapse_nulls, partitioned, chunksize=1),
-                total=len(partitioned),
-                unit=f" genera",
-                ncols=120,
+                p.imap(
+                    refine_worker,
+                    ((df, partition_rank, args.ranks) for df in partitioned),
+                ),
+                unit=f" {partition_rank}",
                 leave=False,
                 desc="Refining",
-            ),
-            how="diagonal_relaxed",
+                total=len(partitioned),
+                ncols=120,
+            )
         )
+    refined_df = pl.concat(refined_list, how="diagonal_relaxed")
     refined_null_counts = refined_df.drop("name").null_count()
     sys.stderr.write("Missing values per rank after refinement:\n")
     sys.stderr.write(f"{str(refined_null_counts)}\n")
