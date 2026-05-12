@@ -28,12 +28,6 @@ def main():
         help="TSV file with taxonomic labels and a 'name' column corresponding to the original species name",
     )
     parser.add_argument(
-        "--filter_strategy",
-        choices=["complete", "species-complete"],
-        default="complete",
-        help="Strategy to filter the matched data. With 'complete' (default) only matched species without missing taxlabels are used. With 'species-complete' missing taxlabels are allowed for ranks higher than species",
-    )
-    parser.add_argument(
         "-o", "--output_taxfile", help="TSV output file with consolidated naming"
     )
     args = parser.parse_args()
