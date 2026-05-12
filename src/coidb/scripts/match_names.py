@@ -22,7 +22,7 @@ def gbif_match(
     rank="species",
     ranks=None,
     strict=True,
-    checklist_key="7ddf754f-d193-4cc9-b351-99906754a03b",
+    checklist_key=None,
 ):
     """
     Matches species names/bin URIs to Catalog of Life. Only returns a taxonomy
