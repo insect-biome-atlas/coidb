@@ -146,7 +146,7 @@ def main():
         required=True,
     )
     parser.add_argument(
-        "-c", "--col", type=str, help="Column to match by", default="bin_uri"
+        "-c", "--col", type=str, help="Column to match by", default="species"
     )
     parser.add_argument(
         "-o",
@@ -178,7 +178,6 @@ def main():
         "--checklist_key",
         type=str,
         help="Checklist key to use for matching",
-        default="7ddf754f-d193-4cc9-b351-99906754a03b",
     )
     args = parser.parse_args()
     if not args.refine_only:
