@@ -207,7 +207,9 @@ def main():
                     ncols=120,
                 )
             )
-        matched_df = pl.concat(df_list).select(["name"] + args.ranks)
+        matched_df = pl.concat(df_list, how="vertical_relaxed").select(
+            ["name"] + args.ranks
+        )
         if args.unrefined_out:
             sys.stderr.write(f"Writing matched table to {args.unrefined_out}\n")
             matched_df.write_csv(args.unrefined_out, separator="\t")
