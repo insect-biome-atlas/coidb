@@ -165,12 +165,21 @@ rule gbif_match:
     threads: 4
     resources:
         slurm_account=config["account"],
+    params:
+        ranks=["kingdom", "phylum", "class", "order", "family", "genus", "species"],
+        checklist_key=(
+            f"--checklist_key {config['gbif_checklistkey']}"
+            if config["gbif_checklistkey"] is not None
+            else ""
+        ),
     message:
         "Matching BOLD species names to GBIF"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
-        match-names -i {input.tsv} -c species -p {threads} --unrefined_out {output.tsv_unrefined} -o {output.tsv} > {log} 2>&1
+        match-names -i {input.tsv} -c species \
+            -p {threads} -r {params.ranks} {params.checklist_key} \
+            --unrefined_out {output.tsv_unrefined} -o {output.tsv} > {log} 2>&1
         """
 
 
