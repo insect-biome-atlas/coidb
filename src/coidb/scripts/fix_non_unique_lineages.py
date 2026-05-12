@@ -123,15 +123,10 @@ def main():
     id_col = df.collect_schema().names()[0]
     sys.stderr.write(f"Finding non-unique lineages in {args.infile}\n")
     non_unique = find_non_unique(df, args.ranks)
-    dups = df.filter(
-        (pl.col("kingdom").is_in(non_unique["kingdom"]))
-        | (pl.col("phylum").is_in(non_unique["phylum"]))
-        | (pl.col("class").is_in(non_unique["class"]))
-        | (pl.col("order").is_in(non_unique["order"]))
-        | (pl.col("family").is_in(non_unique["family"]))
-        | (pl.col("genus").is_in(non_unique["genus"]))
-        | (pl.col("species").is_in(non_unique["species"]))
-    ).collect()
+    dup_list = []
+    for rank in args.ranks:
+        dup_list.append(df.filter(pl.col(rank).is_in(non_unique[rank])))
+    dups = pl.concat(dup_list).collect()
     sys.stderr.write(
         "Non-unique taxa per rank:"
         + " ".join([f"{rank}:{len(non_unique[rank])}" for rank in args.ranks])
