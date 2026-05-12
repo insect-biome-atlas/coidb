@@ -34,16 +34,11 @@ wildcard_constraints:
 
 
 def all_input(wildcards):
-    consensus_type = (
-        ["coidb", "gbif.species-complete", "gbif.complete"]
-        if config["gbif_backbone"]
-        else ["coidb"]
-    )
+    consensus_type = ["coidb", "gbif"] if config["gbif_backbone"] else ["coidb"]
     input = ["<results>/coidb/coidb.info.tsv.gz", "<results>/input_timestamp.txt"]
     input += expand(
-        "<results>/stats/{consensus_type}.{s}.txt",
-        s=["exclNA", "inclNA"],
-        consensus_type=consensus_type,
+        "<results>/stats/{stats_type}.tsv",
+        stats_type=["general_stats", "taxa_stats"],
     )
     input += expand(
         "<results>/consensus_taxonomy/{consensus_type}.{s}.tsv.gz",
