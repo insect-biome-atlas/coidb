@@ -34,22 +34,38 @@ def main():
     ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
     sys.stderr.write(f"Reading matched results from {args.matched}\n")
     matched_df = pl.scan_csv(args.matched, separator="\t")
-    matched_unique = generate_unique(df=matched_df, ranks=ranks).collect()
-    sys.stderr.write(f"{matched_unique.height} unique taxa in matched results\n")
-    if args.filter_strategy == "complete":
-        _ranks = ranks
-    else:
-        _ranks = ["species"]
-    matched_complete = generate_complete(df=matched_unique, ranks=_ranks)
-    sys.stderr.write(
-        f"{matched_complete.height} taxa after removing taxa with missing data for {" ".join(_ranks)}\n"
-    )
-    sys.stderr.write(f"Reading BOLD data from {args.input_taxfile}\n")
+    # generate unique rows
+    matched_unique = generate_unique(df=matched_df, ranks=ranks)
+    # filter to only species-matched results
+    matched_unique = matched_unique.filter(~pl.col("species").str.contains(r"_X+$"))
+    # sys.stderr.write(f"{matched_unique.height} unique taxa in matched results\n")
+    # sys.stderr.write(f"Reading BOLD data from {args.input_taxfile}\n")
     input_df = pl.scan_csv(args.input_taxfile, separator="\t")
+    input_unique = generate_unique(df=input_df, ranks=ranks)
+    # identify potential errors where species in Arthropoda are assigned to a
+    # different phylum. Examples include 'Murphyana rayi' (BOLD:AAI8355) which
+    # is matched to phylum Mollusca in Catalogue of Life.
+    # the code below identifies cases where
+    # 1) the original and matched phyla differ
+    # 2) the original phylum is Arthropoda and the matched phylum is not unassigned
+    not_allowed = (
+        input_unique.join(matched_unique, left_on="species", right_on="name")
+        .filter(
+            (pl.col("phylum") != pl.col("phylum_right"))
+            & (~pl.col("phylum_right").str.contains(r"_X+$"))
+            & (pl.col("phylum") == "Arthropoda")
+        )
+        .select(["kingdom", "phylum", "class", "order", "family", "genus", "species"])
+    )
+    fixed = not_allowed.join(matched_unique, on="species").select(
+        ["name", "kingdom", "phylum", "class", "order", "family", "genus", "species"]
+    )
+    untouched = matched_unique.join(not_allowed, on="species", how="anti")
+    matched_unique = pl.concat([fixed, untouched])
     sys.stderr.write(f"Consolidating names and writing to {args.output_taxfile}\n")
     (
         input_df.drop(["kingdom", "phylum", "class", "order", "family", "genus"])
-        .join(matched_complete.lazy(), left_on="species", right_on="name")
+        .join(matched_unique, left_on="species", right_on="name")
         .drop("species")
         .rename({"species_right": "species"})
         .select(["processid"] + ranks + ["bin_uri", "seq"])
