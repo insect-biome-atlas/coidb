@@ -28,7 +28,6 @@ def gbif_match(
     Matches species names/bin URIs to Catalog of Life. Only returns a taxonomy
     if the matching is exact.
     """
-    # sleep(0.1)
     if ranks is None:
         ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
     res = species.name_backbone(
