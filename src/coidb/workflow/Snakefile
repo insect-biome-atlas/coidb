@@ -398,7 +398,8 @@ rule stats:
         fasta=rules.collect_vsearch.output.fasta,
         consensus="<results>/consensus_taxonomy/{consensus_type}.{s}.tsv.gz",
     output:
-        "<results>/stats/{consensus_type}.{s}.txt",
+        general=temp("<results>/stats/{consensus_type}.{s}.general_stats.tsv"),
+        taxa=temp("<results>/stats/{consensus_type}.{s}.taxa_stats.tsv"),
     log:
         "<logs>/stats.{consensus_type}.{s}.log",
     threads: 1
