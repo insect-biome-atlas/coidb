@@ -396,7 +396,6 @@ rule collect_vsearch:
 rule stats:
     input:
         fasta=rules.collect_vsearch.output.fasta,
-        tsv="<results>/coidb/coidb.info.tsv.gz",
         consensus="<results>/consensus_taxonomy/{consensus_type}.{s}.tsv.gz",
     output:
         "<results>/stats/{consensus_type}.{s}.txt",
