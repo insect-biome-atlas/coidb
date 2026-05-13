@@ -233,8 +233,7 @@ rule fix_nonunique:
         """
 
 
-# Update names in coidb.info.tsv based on matched species names in Catalog of
-# Life.
+# Update names in coidb.info.tsv based on matched taxa names in GBIF backbone
 rule consolidate_names:
     input:
         coidb="<results>/coidb/coidb.info.tsv.gz",
