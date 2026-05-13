@@ -45,11 +45,13 @@ class Workflow:
             d = safe_load(fhin)
         self.output_dir = d["output_dir"]
         self.returncode = run_workflow(self.config).returncode
-        self.info = read_df(f"{self.output_dir}/coidb.info.tsv.gz")
+        self.info = read_df(f"{self.output_dir}/coidb/coidb.info.tsv.gz")
         self.consensus = read_df(
-            f"{self.output_dir}/coidb.BOLD_BIN.consensus_taxonomy.exclNA.tsv.gz"
+            f"{self.output_dir}/consensus_taxonomy/coidb.exclNA.tsv.gz"
         )
-        self.clustered_fasta = read_fasta(f"{self.output_dir}/coidb.clustered.fasta.gz")
+        self.clustered_fasta = read_fasta(
+            f"{self.output_dir}/coidb/coidb.clustered.fasta.gz"
+        )
         self.dada2_addspecies = read_fasta(
             f"{self.output_dir}/dada2/coidb.dada2.addSpecies.exclNA.fasta.gz"
         )
@@ -59,7 +61,9 @@ class Workflow:
         self.dada2_toSpecies = read_fasta(
             f"{self.output_dir}/dada2/coidb.dada2.toSpecies.exclNA.fasta.gz"
         )
-        self.sintax = read_fasta(f"{self.output_dir}/sintax/coidb.sintax.exclNA.fasta.gz")
+        self.sintax = read_fasta(
+            f"{self.output_dir}/sintax/coidb.sintax.exclNA.fasta.gz"
+        )
 
 
 @pytest.fixture
@@ -91,11 +95,16 @@ def taxdata():
 def test_consensus_taxonomy(taxdata):
     ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
     from coidb.scripts import consensus_taxonomy
+
     # with 'full' method all ranks up to the current are used so for taxdata the
     # full method should resolve neither species nor genus
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=80, method="full", exclude_missing_data=False,
+            taxdata,
+            ranks=ranks,
+            threshold=80,
+            method="full",
+            exclude_missing_data=False,
         )
         .select("species")
         .item()
@@ -103,7 +112,11 @@ def test_consensus_taxonomy(taxdata):
     )
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=80, method="full", exclude_missing_data=False,
+            taxdata,
+            ranks=ranks,
+            threshold=80,
+            method="full",
+            exclude_missing_data=False,
         )
         .select("genus")
         .item()
@@ -111,7 +124,11 @@ def test_consensus_taxonomy(taxdata):
     )
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=80, method="full", exclude_missing_data=False,
+            taxdata,
+            ranks=ranks,
+            threshold=80,
+            method="full",
+            exclude_missing_data=False,
         )
         .select("family")
         .item()
@@ -121,7 +138,11 @@ def test_consensus_taxonomy(taxdata):
     # if missing data is ignored
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=90, method="full", exclude_missing_data=True,
+            taxdata,
+            ranks=ranks,
+            threshold=90,
+            method="full",
+            exclude_missing_data=True,
         )
         .select("family")
         .item()
@@ -129,7 +150,11 @@ def test_consensus_taxonomy(taxdata):
     )
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=90, method="full", exclude_missing_data=False,
+            taxdata,
+            ranks=ranks,
+            threshold=90,
+            method="full",
+            exclude_missing_data=False,
         )
         .select("family")
         .item()
@@ -139,7 +164,11 @@ def test_consensus_taxonomy(taxdata):
     # records have 'Arhodia AH03' already at species
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=80, method="rank", exclude_missing_data=False,
+            taxdata,
+            ranks=ranks,
+            threshold=80,
+            method="rank",
+            exclude_missing_data=False,
         )
         .select("species")
         .item()
@@ -149,7 +178,11 @@ def test_consensus_taxonomy(taxdata):
     # excluded, otherwise only order should be resolved
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=90, method="rank", exclude_missing_data=True,
+            taxdata,
+            ranks=ranks,
+            threshold=90,
+            method="rank",
+            exclude_missing_data=True,
         )
         .select("species")
         .item()
@@ -157,7 +190,11 @@ def test_consensus_taxonomy(taxdata):
     )
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=90, method="rank", exclude_missing_data=False,
+            taxdata,
+            ranks=ranks,
+            threshold=90,
+            method="rank",
+            exclude_missing_data=False,
         )
         .select("species")
         .item()
@@ -165,7 +202,11 @@ def test_consensus_taxonomy(taxdata):
     )
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=90, method="rank", exclude_missing_data=False,
+            taxdata,
+            ranks=ranks,
+            threshold=90,
+            method="rank",
+            exclude_missing_data=False,
         )
         .select("genus")
         .item()
@@ -173,7 +214,11 @@ def test_consensus_taxonomy(taxdata):
     )
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=90, method="rank", exclude_missing_data=False,
+            taxdata,
+            ranks=ranks,
+            threshold=90,
+            method="rank",
+            exclude_missing_data=False,
         )
         .select("family")
         .item()
@@ -181,7 +226,11 @@ def test_consensus_taxonomy(taxdata):
     )
     assert (
         consensus_taxonomy.calculate_consensus(
-            taxdata, ranks=ranks, threshold=90, method="rank", exclude_missing_data=False,
+            taxdata,
+            ranks=ranks,
+            threshold=90,
+            method="rank",
+            exclude_missing_data=False,
         )
         .select("order")
         .item()
@@ -190,7 +239,8 @@ def test_consensus_taxonomy(taxdata):
     ranks.pop()
 
     assert (
-        "species" not in consensus_taxonomy.calculate_consensus(
+        "species"
+        not in consensus_taxonomy.calculate_consensus(
             taxdata, ranks=ranks, threshold=80, method="rank"
         ).columns
     )
@@ -205,20 +255,28 @@ def test_files_exist(workflow_runs):
         output_dir = r.output_dir
         assert all(
             [
-                os.path.exists(f"{output_dir}/coidb.info.tsv.gz"),
+                os.path.exists(f"{output_dir}/coidb/coidb.info.tsv.gz"),
+                os.path.exists(f"{output_dir}/consensus_taxonomy/coidb.exclNA.tsv.gz"),
+                os.path.exists(f"{output_dir}/consensus_taxonomy/coidb.inclNA.tsv.gz"),
+                os.path.exists(f"{output_dir}/coidb/coidb.clustered.fasta.gz"),
                 os.path.exists(
-                    f"{output_dir}/coidb.BOLD_BIN.consensus_taxonomy.exclNA.tsv.gz"
+                    f"{output_dir}/dada2/coidb.dada2.addSpecies.exclNA.fasta.gz"
                 ),
                 os.path.exists(
-                    f"{output_dir}/coidb.BOLD_BIN.consensus_taxonomy.inclNA.tsv.gz"
+                    f"{output_dir}/dada2/coidb.dada2.addSpecies.inclNA.fasta.gz"
                 ),
-                os.path.exists(f"{output_dir}/coidb.clustered.fasta.gz"),
-                os.path.exists(f"{output_dir}/dada2/coidb.dada2.addSpecies.exclNA.fasta.gz"),
-                os.path.exists(f"{output_dir}/dada2/coidb.dada2.addSpecies.inclNA.fasta.gz"),
-                os.path.exists(f"{output_dir}/dada2/coidb.dada2.toGenus.exclNA.fasta.gz"),
-                os.path.exists(f"{output_dir}/dada2/coidb.dada2.toGenus.inclNA.fasta.gz"),
-                os.path.exists(f"{output_dir}/dada2/coidb.dada2.toSpecies.exclNA.fasta.gz"),
-                os.path.exists(f"{output_dir}/dada2/coidb.dada2.toSpecies.inclNA.fasta.gz"),
+                os.path.exists(
+                    f"{output_dir}/dada2/coidb.dada2.toGenus.exclNA.fasta.gz"
+                ),
+                os.path.exists(
+                    f"{output_dir}/dada2/coidb.dada2.toGenus.inclNA.fasta.gz"
+                ),
+                os.path.exists(
+                    f"{output_dir}/dada2/coidb.dada2.toSpecies.exclNA.fasta.gz"
+                ),
+                os.path.exists(
+                    f"{output_dir}/dada2/coidb.dada2.toSpecies.inclNA.fasta.gz"
+                ),
                 os.path.exists(f"{output_dir}/sintax/coidb.sintax.exclNA.fasta.gz"),
                 os.path.exists(f"{output_dir}/sintax/coidb.sintax.inclNA.fasta.gz"),
                 os.path.exists(f"{output_dir}/qiime2/coidb.qiime2.info.exclNA.tsv.gz"),
