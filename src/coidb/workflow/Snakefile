@@ -202,11 +202,11 @@ rule fill_missing:
     resources:
         slurm_account=config["account"],
     message:
-        "Filling missing ranks for {wildcards.n} data"
+        "Filling missing ranks for filtered {wildcards.n} data"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
-        fill-missing -i {input} -o {output.tsv} 2>{log}
+        fill-missing -i {input.tsv} -o {output.tsv} 2>{log}
         """
 
 
