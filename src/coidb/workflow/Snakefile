@@ -239,16 +239,18 @@ rule consolidate_names:
         coidb="<results>/coidb/coidb.info.tsv.gz",
         gbif="<results>/gbif/gbif.info.tsv.gz",
     output:
-        tsv="<results>/consolidated/{filter_strategy}.tsv",
+        tsv=temp("<results>/consolidated/consolidated.tsv"),
     log:
-        "<logs>/consolidate_names.{filter_strategy}.log",
+        "<logs>/consolidate_names.log",
+    threads: 4
     resources:
         slurm_account=config["account"],
     message:
         "Consolidating taxonomy based on GBIF matches"
     shell:
         """
-        consolidate-names -i {input.coidb} -m {input.gbif} --filter_strategy {wildcards.filter_strategy} -o {output.tsv} >{log} 2>&1
+        export POLARS_MAX_THREADS={threads}
+        consolidate-names -i {input.coidb} -m {input.gbif} -o {output.tsv} >{log} 2>&1
         """
 
 
