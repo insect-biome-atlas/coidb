@@ -193,7 +193,7 @@ def fill_missing_input(wildcards):
 # This rule fills in missing ranks in taxonomic dataframes.
 rule fill_missing:
     input:
-        fill_missing_input,
+        tsv=fill_missing_input,
     output:
         tsv=temp("<temp_dir>/{n}/{n}.info.fill-missing.tsv"),
     log:
@@ -225,7 +225,7 @@ rule fix_nonunique:
     params:
         id_col=lambda wildcards: "name" if wildcards.n == "gbif" else "bin_uri",
     message:
-        "Fixing non-unique lineages for {wildcards.n}"
+        "Fixing non-unique lineages for {wildcards.n} data"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
