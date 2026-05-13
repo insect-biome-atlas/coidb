@@ -409,8 +409,61 @@ rule stats:
     shell:
         """
         export POLARS_MAX_THREADS={threads}
-        coidb-stats --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} > {output} 2>{log}
+        coidb-stats --fasta {input.fasta} --consensus {input.consensus} --general_stats_out {output.general} --taxa_stats_out {output.taxa} 2>{log}
         """
+
+
+def stats_input(wildcards):
+    input = {"general": [], "taxa": []}
+    consensus_type = ["coidb"]
+    if config["gbif_backbone"]:
+        consensus_type.append("gbif")
+    return {
+        "general": expand(
+            "<results>/stats/{consensus_type}.{s}.general_stats.tsv",
+            consensus_type=consensus_type,
+            s=["exclNA", "inclNA"],
+        ),
+        "taxa": expand(
+            "<results>/stats/{consensus_type}.{s}.taxa_stats.tsv",
+            consensus_type=consensus_type,
+            s=["exclNA", "inclNA"],
+        ),
+    }
+
+
+rule aggregate_stats:
+    input:
+        unpack(stats_input),
+    output:
+        general="<results>/stats/general_stats.tsv",
+        taxa="<results>/stats/taxa_stats.tsv",
+    threads: 1
+    resources:
+        slurm_account=config["account"],
+    message:
+        "Aggregating statistics"
+    run:
+        import polars as pl
+        import os
+
+        df = pl.DataFrame()
+        for i, f in enumerate(input.general):
+            _df = pl.read_csv(f, separator="\t")
+            if i == 0:
+                df = _df
+            else:
+                df = pl.concat([df, _df])
+        df.write_csv(output.general, separator="\t")
+        df = pl.DataFrame()
+        for i, f in enumerate(input.taxa):
+            name = os.path.basename(f).replace(".taxa_stats.tsv", "")
+            _df = pl.read_csv(f, separator="\t").with_columns(name=pl.lit(name))
+            if i == 0:
+                df = _df
+            else:
+                df = pl.concat([df, _df])
+        df.write_csv(output.taxa, separator="\t")
 
 
 def get_kv_format(wildcards):
