@@ -92,6 +92,32 @@ def taxdata():
     )
 
 
+@pytest.fixture
+def matched_data():
+    return pl.DataFrame(
+        {
+            "name": [
+                "Arhodia lasiocamparia",
+                "Arhodia AH03",
+                "Homo neanderthalensis",
+                "Homo sapiens",
+            ],
+            "kingdom": ["Animalia"] * 4,
+            "phylum": ["Mollusca", "Arthropoda", "Chordata", "Chordata"],
+            "class": ["Gastropoda", "Insecta", "Mammalia", "Mammalia"],
+            "order": ["Nudibranchia", "Lepidoptera", "Primates", "Primates"],
+            "family": ["Janolidae", "Geometridae", "Panidae", "Hominidae"],
+            "genus": ["Arhodia", "Arhodia", "Palaeoanthropus", "Homo"],
+            "species": [
+                "Arhodia lasiocamparia",
+                "Arhodia AH03",
+                "Palaeoanthropus neanderthalensis",
+                "Homo sapiens",
+            ],
+        }
+    )
+
+
 def test_consensus_taxonomy(taxdata):
     ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
     from coidb.scripts import consensus_taxonomy
@@ -325,3 +351,61 @@ def test_clustering(workflow_runs):
     assert len([x for x in r1.clustered_fasta.keys() if x.startswith("seq2")]) == 4
     assert len([x for x in r2.clustered_fasta.keys() if x.startswith("seq2")]) == 3
     assert len([x for x in r3.clustered_fasta.keys() if x.startswith("seq2")]) == 2
+
+
+def test_consolidate_taxonomy(matched_data, workflow_runs):
+    r = workflow_runs[0]
+    output_dir = r.output_dir
+    matched = f"{output_dir}/matched.tsv"
+    consolidated = f"{output_dir}/consolidated.tsv"
+    matched_data.write_csv(matched, separator="\t")
+    res = subprocess.run(
+        [
+            "consolidate-names",
+            "-i",
+            f"{output_dir}/coidb/coidb.info.tsv",
+            "-m",
+            matched,
+            "-o",
+            consolidated,
+        ]
+    )
+    assert res.returncode == 0
+    cons_df = pl.read_csv(consolidated, separator="\t")
+    df = pl.read_csv(f"{output_dir}/coidb/coidb.info.tsv", separator="\t")
+    joined = df.join(cons_df, on="processid", suffix="_cons")
+    primates = (
+        joined.filter(pl.col("species") == "Homo neanderthalensis")
+        .select("genus_cons", "species_cons")
+        .unique()
+    )
+    assert primates.item(0, 1) == "Palaeoanthropus neanderthalensis"
+    assert primates.item(0, 0) == "Palaeoanthropus"
+    arhodia1 = (
+        joined.filter(pl.col("species") == "Arhodia AH03")
+        .select("family_cons", "genus_cons", "species_cons")
+        .unique()
+    )
+    # assert that the consolidated taxonomy for Arhodia AH03 is unique at family, genus and species
+    assert arhodia1.height == 1
+    assert arhodia1.item(0, 2) == "Arhodia AH03"
+    assert arhodia1.item(0, 1) == "Arhodia"
+    assert arhodia1.item(0, 0) == "Geometridae"
+    arhodia2 = (
+        joined.filter(pl.col("species") == "Arhodia lasiocamparia")
+        .select(
+            "phylum_cons",
+            "class_cons",
+            "order_cons",
+            "family_cons",
+            "genus_cons",
+            "species_cons",
+        )
+        .unique()
+    )
+    # assert that the erroneous match for Arhodia lasiocamparia has not been assigned
+    assert arhodia2.item(0, 0) == "Arthropoda"
+    assert arhodia2.item(0, 1) == "Insecta"
+    assert arhodia2.item(0, 2) == "Lepidoptera"
+    assert arhodia2.item(0, 3) == "Geometridae"
+    assert arhodia2.item(0, 4) == "Arhodia"
