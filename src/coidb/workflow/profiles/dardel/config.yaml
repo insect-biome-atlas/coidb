@@ -1,48 +1,49 @@
 default-resources: 
   slurm_partition: shared
-  runtime: 60
+  runtime: "1h"
   mem_mb: 1776
 
 
 set-resources:
   filter:
     mem_mb: 26640
-    runtime: 30
+  gbif_match:
+    mem_mb: 4000
+    runtime: "6h"
   multi_record_bins:
     mem_mb: 26640
   fill_missing:
     mem_mb: 3552
-    runtime: 30
   fix_nonunique:
     mem_mb: 26640
-    runtime: 30
   calculate_consensus:
     mem_mb: 14208
-    runtime: 120
+    runtime: "2h"
   batch_multi_record_bins:
-    runtime: 120
+    runtime: "2h"
   vsearch:
-    runtime: 600
+    runtime: "10h"
     mem_mb: 7104
-  add_to_vsearch:
+  collect_vsearch:
+    mem_mb: 3352
+  stats:
     mem_mb: 3552
-  parse_backbone:
+    format:
     mem_mb: 3552
-  format_sintax:
-    mem_mb: 26640
-  format_dada2:
-    mem_mb: 26640
+    runtime: '12h'
+  generate_kv_file:
+    mem_mb: 3552
   format_qiime2:
     mem_mb: 26640
 
 set-threads:
-  filter: 15
-  multi_record_bins: 15
-  fix_nonunique: 15
-  calculate_consensus: 8
-  format_sintax: 15
-  format_dada2: 15
-  format_qiime2: 15
+  filter: 10
+  gbif_match: 10
+  batch_multi_record_bins: 4
+  fix_nonunique: 10
+  calculate_consensus: 10
+  format: 4
+  format_qiime2: 4
 
 printshellcmds: False
 local-cores: 1

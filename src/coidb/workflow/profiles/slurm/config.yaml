@@ -16,11 +16,15 @@ set-resources:
     mem_mb: 24000
   calculate_consensus:
     mem_mb: 16000
+    runtime: "2h"
   batch_multi_record_bins:
-    runtime: 120
+    runtime: "2h"
   vsearch:
+    runtime: "10h"
     mem_mb: 8000
   collect_vsearch:
+    mem_mb: 4000
+  stats:
     mem_mb: 4000
   format:
     mem_mb: 4000
@@ -33,6 +37,7 @@ set-resources:
 set-threads:
   filter: 10
   gbif_match: 10
+  batch_multi_record_bins: 4
   fix_nonunique: 10
   calculate_consensus: 10
   format: 4
