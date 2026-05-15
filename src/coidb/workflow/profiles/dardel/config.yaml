@@ -10,8 +10,6 @@ set-resources:
   gbif_match:
     mem_mb: 4000
     runtime: "6h"
-  multi_record_bins:
-    mem_mb: 26640
   fill_missing:
     mem_mb: 3552
   fix_nonunique:
@@ -28,7 +26,7 @@ set-resources:
     mem_mb: 3352
   stats:
     mem_mb: 3552
-    format:
+  format:
     mem_mb: 3552
     runtime: '12h'
   generate_kv_file:
