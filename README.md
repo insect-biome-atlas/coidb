@@ -60,7 +60,7 @@ sequences with internal gaps and ambiguous nucleotides. A length filtering is
 applied (with a user-defined minimum length threshold) and only records assigned
 to a BOLD BIN are retained.
 
-Species names are then matched to the GBIF Catalogue of Life dataset, missing
+Species names are then matched to the GBIF taxonomy (optional), missing
 taxonomic information is filled and taxonomic lineages are made unique by
 prefixing duplicated taxonomic labels. 
 
