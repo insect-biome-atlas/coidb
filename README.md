@@ -123,7 +123,7 @@ docker pull ghcr.io/insect-biome-atlas/coidb
 
 We recommend to run `coidb` on a system with at least 4 cores and 16 GB RAM.
 During runs, roughly 75-100 GB of disk space will be used which will be reduced
-to ~6 GB upon completion. The full run takes roughly 3 hours on a MacBook Pro
+to ~6 GB upon completion. The full run takes roughly 5 hours on a MacBook Pro
 Laptop running with 4 cores.
 
 ## Obtain data
@@ -195,6 +195,7 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
 --temp-dir            PATH        Folder for temporary files [default: tmp]
 --account          -A TEXT        SLURM compute account [default: None]
 --gbif-backbone                   Match BOLD species name to GBIF backbone using pygbif package
+--gbif-checklistkey   TEXT        Checklist key to use when matching species names to GBIF [default: 7ddf754f-d193-4cc9-b351-99906754a03b]
 --consensus-threshold INTEGER     Threshold (in %) when calculating consensus taxonomy [default: 80]
 --consensus-method    [rank|full] Method to use when calculating consensus [default: rank]
 --ranks               TEXT        Ranks to use for calculating consensus and generating fastas [default: kingdom, phylum, class, order, family, genus, species]
@@ -213,9 +214,15 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
 * The `--account` or `-A` argument sets a compute account for running on SLURM
   clusters (see [Cluster execution](#cluster-execution) below).
 * The `--gbif-backbone` argument instructs `coidb` to match species names from
-  BOLD to the [GBIF Catalogue of Life
-  dataset](https://www.gbif.org/dataset/7ddf754f-d193-4cc9-b351-99906754a03b)
-  and use the information to calculate a taxonomic consensus for BOLD BINs.
+  BOLD to GBIF using the [pygbif](https://pygbif.readthedocs.io/en/latest/)
+  python package and use the information to calculate a taxonomic consensus for
+  BOLD BINs.
+* The `--gbif-checklistkey` argument specifies what taxonomic backbone to use
+  for the matching. The default is to use the [Catalogue of
+  Life](https://www.gbif.org/dataset/7ddf754f-d193-4cc9-b351-99906754a03b) key
+  (`7ddf754f-d193-4cc9-b351-99906754a03b`). Set this to
+  `d7dddbf4-2cf0-4f39-9b2a-bb099caae36c` to instead use the [GBIF Backbone
+  Taxonomy](https://www.gbif.org/dataset/d7dddbf4-2cf0-4f39-9b2a-bb099caae36c).
 * The `--consensus-threshold` specifies a threshold in percent when calculating
   consensus taxonomies for BOLD BINs. 
 * The `--consensus-method` argument specifies how the consensus taxonomy is
@@ -411,6 +418,10 @@ command.
 
 The primary outputs from a run are placed in the directory set by the `--output-dir` command line argument (default: `results/`). These include:
 
+#### Sequence and info file
+
+The `coidb/` subdir contains the following files:
+
 * `coidb.clustered.fasta.gz`: A fasta file with sequences clustered at whatever
    threshold set in the config file (default is 1.0 which means 100% identity).
    Sequence ids in this file correspond to process_ids, _e.g._ `BPALB370-17`,
@@ -422,17 +433,33 @@ The primary outputs from a run are placed in the directory set by the `--output-
 * `coidb.info.tsv.gz`: This TSV file contains sequence and taxonomic information
   for all records kept after filtering.
 
-* `coidb.BOLD_BIN.consensus_taxonomy.exclNA.tsv.gz`: This TSV file contains the
-  calculated consensus taxonomy of BOLD BINs. If a consensus could not be
-  reached at a certain taxonomic rank, the taxonomic label at that rank is
-  prefixed with 'unresolved.' followed by the label of the lowest consensus
-  rank. The `exclNA` part of the filename means that taxonomic labels
-  corresponding to missing data (those suffixed with `_X`) were ignored when
-  calculating the consensus.
+#### Consensus taxonomy files
 
-* `coidb.BOLD_BIN.consensus_taxonomy.inclNA.tsv.gz`: Same as above, but here all
+The `consensus_taxonomy/` subdir contains the following:
+
+* `coidb.exclNA.tsv.gz`: This TSV file contains the calculated consensus
+  taxonomy of BOLD BINs using the taxonomic information of all filtered records
+  from BOLD. If a consensus could not be reached at a certain taxonomic rank,
+  the taxonomic label at that rank is prefixed with 'unresolved.' followed by
+  the label of the lowest consensus rank. The `exclNA` part of the filename
+  means that taxonomic labels corresponding to missing data (those suffixed with
+  `_X`) were ignored when calculating the consensus.
+
+* `coidb.inclNA.tsv.gz`: Same as above, but here all
   taxonomic labels were taken into account when calculating the consensus (even
   labels corresponding to missing data).
+
+If the workflow was run with the `--gbif-backbone` parameter this folder will also contain the following:
+
+* `gbif.exclNA.tsv.gz`: This TSV file contains consensus
+  taxonomies calculated using taxonomic information obtained by matching species
+  names from BOLD to the GBIF taxonomy with the `pygbif` package. The taxonomies will be
+  compatible with the GBIF backbone (specifically the backbone set with the `--gbif-checklistkey` argument), but will have a limited
+  number of BOLD BINs. The `exclNA` part of the filename means the consensus was
+  calculated as above for `coidb.exclNA.tsv.gz`.
+
+* `gbif.inclNA.tsv.gz`: Same as above, but missing information is ignored as for
+  `coidb.inclNA.tsv.gz`.
 
 > [!IMPORTANT]
 > The consensus taxonomy files described above are used to create the SINTAX,
@@ -568,14 +595,6 @@ would then become:
 
 This is what the `exclNA` tag refers to in the output files described above (see
 [Output](#output)).
-
-> [!Note]
-> In previous versions of `coidb` the [GBIF backbone
-> taxonomy](https://www.gbif.org/dataset/d7dddbf4-2cf0-4f39-9b2a-bb099caae36c)
-> was used to set taxonomy of BOLD BINs. However, because the backbone data is
-> not up to date we do not recommend using this option at the moment. The
-> functionality is still kept so you can run `coidb` with the command line flag
-> `--gbif-backbone` if you wish.
 
 
 ### Clustering
