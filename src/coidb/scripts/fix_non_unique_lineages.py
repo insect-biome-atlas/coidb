@@ -21,8 +21,11 @@ def find_non_unique(df, ranks):
         sys.stderr.write(f"{rank}...\n")
         i = ranks.index(rank) + 1
         _ranks = ranks[0:i]
-        q = df.with_columns(lineage=pl.concat_str(_ranks, separator=";")).select(
-            rank, "lineage"
+        parent_rank = ranks[ranks.index(rank) - 1]
+        q = (
+            df.filter(~pl.col(parent_rank).str.contains(r"_X+$"))
+            .with_columns(lineage=pl.concat_str(_ranks, separator=";"))
+            .select(rank, "lineage")
         )
         non_unique[rank] = (
             q.group_by(rank)
