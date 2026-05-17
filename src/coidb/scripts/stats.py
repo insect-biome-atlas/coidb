@@ -172,7 +172,7 @@ def main():
     # filter to unresolved species
     unresolved_species = consensus_joined_df.filter(
         (pl.col("species").str.starts_with("unresolved"))
-        & (~pl.col("species").str.starts_with(r"_X+$"))
+        & (~pl.col("species").str.contains(r"_X+$"))
     )
     # calculate sequences in unresolved species
     unresolved_species_seqs = unresolved_species.select("n").sum().collect().item(0, 0)
