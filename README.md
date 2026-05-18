@@ -559,6 +559,7 @@ types of the generated database.
 ## How it works
 
 ### Filtering
+
 Firstly, the input file is extracted and the TSV file with taxonomic information
 and sequence data for each record is identified. This TSV file is then filtered
 by:
@@ -570,6 +571,14 @@ by:
 5. Stripping any leading and trailing gap (`-`) characters
 6. Removing sequences with remaining gaps
 7. Removing sequences with non DNA characters.
+
+### Species name matching
+
+If running with `--gbif-backbone` (config parameter `gbif_backbone: True`)
+species names from the filtered BOLD output are matched with the `pygbif` python
+package using the checklist key specified with `--gbif-checklistkey` (config
+parameter `gbif_checklistkey`). Only exact matches are used and if alternative
+matches with equal confidence are found the matched name is ignored.
 
 ### Filling missing data
 
