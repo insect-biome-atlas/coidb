@@ -472,6 +472,19 @@ If the workflow was run with the `--gbif-backbone` parameter this folder will al
 > database. As such, the `inclNA` version represents a more conservative (but
 > less resolved) version of the database.
 
+### Consolidated taxonomy
+
+The `consolidated/consolidated.tsv.gz` file contains the taxonomic assignments
+resulting from consolidating the results from matching species names from BOLD
+using the `pygbif` python package. Only records with species names that could be
+matched exactly and without ambiguity are included in this file.
+
+### GBIF results
+
+The `gbif/gbif.info.tsv.gz` file contains the original species name from BOLD in
+the first `name` column followed by the taxonomic labels resulting from matching
+species names with the `pygbif` package.
+
 ### Log files
 
 Log files from a coidb run are stored under `_logs/` in your `--output-dir` directory (default: `results/`).
@@ -498,6 +511,50 @@ the input file you used, while the `_processed/` directory contains _e.g._ the
 * `dada2/coidb.dada2.toGenus.{exclNA,inclNA}.fasta.gz`, `dada2/coidb.dada2.toSpecies.{exclNA,inclNA}.fasta.gz` and `dada2/coidb.dada2.addSpecies.{exclNA,inclNA}.fasta.gz`: These fasta files are compatible with the `assignTaxonomy` and `addSpecies` functions from [DADA2](https://benjjneb.github.io/dada2/assign.html).
 
 * `qiime2/coidb.qiime2.info.{exclNA,inclNA}.tsv.gz`: These TSV files can be used with QIIME2 to create a taxonomy artifact for use with the [feature-classifier](https://amplicon-docs.qiime2.org/en/latest/references/plugins/feature-classifier.html#q2-plugin-feature-classifier) plugin. Unzip the file then run `qiime tools import --type 'FeatureData[Taxonomy]' --input-format TSVTaxonomyFormat --input-path coidb.qiime2.inclNA.info.tsv --output-path taxonomy.qza`. The `coidb.clustered.fasta.gz` file can be used to import sequences with `qiime tools import --type 'FeatureData[Sequence]' --input-path coidb.clustered.fasta --output-path seqs.qza`.
+
+
+### Statistics
+
+The `stats/` subdir contains two files with some statistics for the different
+types of the generated database.
+
+* `stats/general_stats.tsv`: This file contains general statistics described below:
+
+| column name | description |
+|-------------|-------------|
+| type | database type (_e.g._ `coidb.exclNA.tsv`) |
+| total_seqs | total sequences in the clustered fasta file (_e.g._ `coidb/coidb.clustered.fasta.gz`) | 
+| total_bins | total number of unique BOLD bins | 
+| mean_seqs_per_bin | mean number of sequences per BOLD bin |
+| median_seqs_per_bin | median number of sequences per BOLD bin |
+| min_seqs_per_bin | minimum number of sequences per BOLD bin |
+| max_seqs_per_bin | maximum number of sequences per BOLD bin |
+| total_non-bins | total number of non-BOLD bins (_e.g._ prokaryotic sequences not assigned to BOLD bins) |
+| total_species | total number of unique species names | 
+| total_bin_species | total number of species for sequences assigned to BOLD bins | 
+| total_nonbin_species | total number of species for sequences assigned to non-BOLD bins |
+| ambiguous_species | number of unique ambiguous species names (names ending with with `_X`) |
+| seqs_in_ambiguous_species | total number of sequences with ambiguous species assignments | 
+| ambiguous_bin_species | number of unique ambiguous species names for sequences assigned to BOLD bins |
+| seqs_in_ambiguous_bin_species | total number of sequences assigned to BOLD bins and with ambiguous species names | 
+| unresolved_species | number of unique unresolved species (prefixed with `unresolved.`) |
+| seqs_in_unresolved_species | total number of sequences assigned to unresolved species | 
+| unresolved_bin_species | number of unresolved species names for sequences assigned to BOLD bins |
+| seqs_in_unresolved_bin_species | total number of sequences assigned to BOLD bins and with unresolved species names |
+| unresolved_ambiguous_species | number of unresolved **and** ambiguous species |
+| seqs_in_unresolved_ambiguous_species | total number of sequences assigned to unresolved **and** ambiguous species | 
+| unresolved_ambiguous_bin_species | number of unresolved **and** ambiguous species for sequences assigned to BOLD bins |
+| seqs_in_unresolved_ambiguous_bin_species | total number of sequences assigned to unresolved **and** ambiguous species for sequences assigned to BOLD bins |
+
+* `stats/taxa_stats.tsv`: This file shows the number of sequences assigned to
+  different kingdoms/phyla per database type:
+
+| column | description |
+|--------|-------------|
+| taxa | taxa name |
+| n_bins | number of unique BOLD bins assigned to taxa |
+| rank | taxonomic rank |
+| name | database name |
 
 ## How it works
 
