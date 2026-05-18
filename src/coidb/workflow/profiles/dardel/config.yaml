@@ -18,7 +18,7 @@ set-resources:
     mem_mb: 14208
     runtime: "2h"
   batch_multi_record_bins:
-    runtime: "2h"
+    runtime: "10h"
   vsearch:
     runtime: "10h"
     mem_mb: 7104
