@@ -21,14 +21,20 @@ def generate_unique(df, ranks=None):
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument("-i", "--input_taxfile", help="TSV file with taxonomic labels")
+    parser.add_argument(
+        "-i", "--input_taxfile", required=True, help="TSV file with taxonomic labels"
+    )
     parser.add_argument(
         "-m",
         "--matched",
+        required=True,
         help="TSV file with taxonomic labels and a 'name' column corresponding to the original species name",
     )
     parser.add_argument(
-        "-o", "--output_taxfile", help="TSV output file with consolidated naming"
+        "-o",
+        "--output_taxfile",
+        required=True,
+        help="TSV output file with consolidated naming",
     )
     args = parser.parse_args()
     ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
