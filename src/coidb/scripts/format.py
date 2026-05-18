@@ -164,6 +164,9 @@ def main():
     parser.add_argument("-o", "--outfile", type=str, required=True, help="Output file")
     parser.add_argument("--idfile", type=str, help="Fasta identifiers output file")
     args = parser.parse_args()
+    # Ensure idfile argument passed if format != qiime2
+    if args.format != "qiime2" and args.idfile is None:
+        sys.exit("Argument --idfile required when format!=qiime2\n")
     # Read consensus taxonomy for BOLD BINs
     consensus = pl.scan_csv(args.consensus, separator="\t")
     sys.stderr.write(f"Reading fasta headers from {args.fasta}\n")
