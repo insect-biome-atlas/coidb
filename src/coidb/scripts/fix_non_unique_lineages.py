@@ -15,6 +15,18 @@ def find_non_unique(df, ranks):
     1 unique lineage this means that parent ranks have conflicting taxlabels.
     Taxa with conflicting parent ranks are saved to a list in a dictionary and
     returned.
+
+    Parameters
+    ----------
+    df : polars DataFrame
+        Data frame with taxonomic ranks as columns
+    ranks : list
+        List of ranks for which to search for non-unique lineages
+
+    Returns
+    -------
+    non_unique: dict
+        Dictionary with ranks as keys and a list of taxa names as values
     """
     non_unique = {}
     for rank in ranks:
@@ -51,21 +63,33 @@ def find_bins_to_remove(df, group_ranks, id_col="bin_uri"):
 
 def fix_non_unique_lineages(df, non_unique, ranks, id_col="bin_uri", remove=False):
     """
-    This function iterates the duplicated ranks/names and attempts to
-    identify BINs that can be removed in order to make the
-    dataframe unique for parent lineages. If BINs cannot be removed, the
-    taxa are instead prefixed with the parent rank
 
-    As an example, the genus Aphaenogaster can be present for BINs like this:
-    kingdom  phylum     class       order         family        genus
-    Animalia Animalia_X Animalia_XX Animalia_XXX  Animalia_XXXX Aphaenogaster
-    Animalia Arthropoda Insecta 	Hymenoptera   Formicidae 	Aphaenogaster
+    This function takes as input a dataframe of rows with non-unique lineages
+    and prefixes the taxonomic labels with the parent rank in order to make the
+    lineages unique.
 
-    This function will identify BINs assigned according to the first row, and mark
-    them for removal, while keeping BINs assigned as in the second row.
+    For example, the genus 'Achlya' can have the lineage strings:
+    Animalia;Arthropoda;Insecta;Lepidoptera;Drepanidae;Achlya
+    Protista;Oomycota;Peronosporea;Saprolegniales;Saprolegniaceae;Achlya
 
-    If removal of BINs assigned as in the first row is not enough to generate a
-    unique lineage, then the conflicting taxlabels are prefixed with their parent taxa.
+    This will be modified to:
+    Animalia;Arthropoda;Insecta;Lepidoptera;Drepanidae;Drepanidae_Achlya
+    Protista;Oomycota;Peronosporea;Saprolegniales;Saprolegniaceae;Saprolegniaceae_Achlya
+
+    Parameters
+    ----------
+    df : polars DataFrame
+        DataFrame of rows with non-unique lineages
+    non_unique : dict
+        Dictionary with ranks as keys and taxa with non-unique parent lineages
+        as values
+    ranks : list
+        List of taxonomic ranks to iterate
+    id_col : string
+        Column name to use for removal of non-unique lineages
+    remove : boolean
+        If True, the function will attempt to fix the non-unique lineages
+        by first removing ambiguous assignments
     """
     bins_to_remove = []
     for rank in ranks:
@@ -113,7 +137,7 @@ def main():
     parser.add_argument(
         "--id_col",
         type=str,
-        help="Column name containing identifier",
+        help="Column name containing identifier to remove if running with --remove",
         default="bin_uri",
     )
     parser.add_argument(
@@ -123,12 +147,14 @@ def main():
     )
     args = parser.parse_args()
     df = pl.scan_csv(args.infile, separator="\t")
-    id_col = df.collect_schema().names()[0]
+    index_key = df.collect_schema().names()[0]
     sys.stderr.write(f"Finding non-unique lineages in {args.infile}\n")
     non_unique = find_non_unique(df, args.ranks)
+    # generate a list of Lazy Frames containing all non-unique rows
     dup_list = []
     for rank in args.ranks:
         dup_list.append(df.filter(pl.col(rank).is_in(non_unique[rank])))
+    # concatenate and collect into a single DataFrame
     dups = pl.concat(dup_list).collect()
     sys.stderr.write(
         "Non-unique taxa per rank:"
@@ -137,13 +163,16 @@ def main():
     )
     sys.stderr.write(f"{dups.height} records with non-unique lineages\n")
     sys.stderr.write("Fixing non-unique lineages\n")
+    # generate a dataframe with unique lineages
     unique_df = fix_non_unique_lineages(
         dups, non_unique, args.ranks, args.id_col, args.remove
     )
     pl.concat(
         [
             df.filter(
-                ~pl.col(id_col).is_in(unique_df.select(id_col).to_series().to_list())
+                ~pl.col(index_key).is_in(
+                    unique_df.select(index_key).to_series().to_list()
+                )
             ),
             unique_df.lazy(),
         ]
