@@ -92,7 +92,7 @@ def fix_non_unique_lineages(df, non_unique, ranks, id_col="bin_uri", remove=Fals
         by first removing ambiguous assignments
     """
     bins_to_remove = []
-    for rank in ranks:
+    for rank in ranks[1:]:
         try:
             taxa = non_unique[rank]
         except KeyError:
