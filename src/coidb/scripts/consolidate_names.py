@@ -44,8 +44,6 @@ def main():
     matched_unique = generate_unique(df=matched_df, ranks=ranks)
     # filter to only species-matched results
     matched_unique = matched_unique.filter(~pl.col("species").str.contains(r"_X+$"))
-    # sys.stderr.write(f"{matched_unique.height} unique taxa in matched results\n")
-    # sys.stderr.write(f"Reading BOLD data from {args.input_taxfile}\n")
     input_df = pl.scan_csv(args.input_taxfile, separator="\t")
     input_unique = generate_unique(df=input_df, ranks=ranks)
     # identify potential errors where species in Arthropoda are assigned to a
