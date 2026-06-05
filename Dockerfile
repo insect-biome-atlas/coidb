@@ -1,4 +1,4 @@
-FROM ghcr.io/prefix-dev/pixi:0.60.0-bullseye-slim AS build
+FROM ghcr.io/prefix-dev/pixi:0.70.1 AS build
 
 # Use bash as shell
 SHELL ["/bin/bash", "-c"]
