@@ -13,8 +13,8 @@ COPY src /app
 COPY pixi.lock pyproject.toml README.md /app/
 
 RUN pixi-install-to-prefix -l pixi.lock /opt/conda && \
-    pixi build --locked --path pyproject.toml && \
-    pixi inject --prefix /opt/conda --package coidb*.conda
+    pixi publish --target-dir .pixi/publish --force --clean --path pyproject.toml && \
+    pixi inject --prefix /opt/conda --package .pixi/publish/coidb*.conda
 
 
 FROM condaforge/mambaforge:24.9.2-0 AS production
