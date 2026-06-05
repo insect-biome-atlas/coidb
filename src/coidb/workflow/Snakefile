@@ -132,7 +132,7 @@ rule filter:
         tsv=get_extracted,
     output:
         tsv=temp("<temp_dir>/_processed/data.filtered.tsv"),
-        timestamp=temp("<results>/input_timestamp.txt"),
+        timestamp="<results>/input_timestamp.txt",
     log:
         "<logs>/filter.log",
     threads: 4
@@ -261,9 +261,7 @@ def consensus_input(wildcards):
         return "<results>/consolidated/consolidated.tsv.gz"
 
 
-# This rule calculates a consensus taxonomy for BOLD BINs. It uses as input
-# both the BOLD data and the GBIF backbone. If BINs are present in the
-# backbone this information takes precedence.
+# This rule calculates a consensus taxonomy for BOLD BINs.
 rule calculate_consensus:
     input:
         tsv=consensus_input,
