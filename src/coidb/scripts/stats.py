@@ -81,7 +81,7 @@ def main():
     args = parser.parse_args()
     fasta = args.fasta
     consensus = args.consensus
-    cons_type = os.path.splitext(os.path.basename(consensus))[0]
+    cons_type = os.path.splitext(os.path.basename(consensus))[0].replace(".tsv", "")
     (
         seqids,
         bins_df,
@@ -93,18 +93,15 @@ def main():
         bins_df, on="bin_uri"
     )
     # calculate stats on sequences per bin
-    mean_seqs_per_bin = consensus_joined_df.select("n").mean().collect().item(0, 0)
-    median_seqs_per_bin = consensus_joined_df.select("n").median().collect().item(0, 0)
-    min_seqs_per_bin = consensus_joined_df.select("n").min().collect().item(0, 0)
-    max_seqs_per_bin = consensus_joined_df.select("n").max().collect().item(0, 0)
+    bold_bin_df = consensus_joined_df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
+    mean_seqs_per_bin = bold_bin_df.select("n").mean().collect().item(0, 0)
+    median_seqs_per_bin = bold_bin_df.select("n").median().collect().item(0, 0)
+    min_seqs_per_bin = bold_bin_df.select("n").min().collect().item(0, 0)
+    max_seqs_per_bin = bold_bin_df.select("n").max().collect().item(0, 0)
     # calculate total sequences
     total_seqs = consensus_joined_df.select("n").sum().collect().item(0, 0)
     # calculate total bins
-    total_bins = (
-        consensus_joined_df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
-        .collect()
-        .height
-    )
+    total_bins = bold_bin_df.collect().height
     # calculate total non-BOLD-bins
     total_nonbins = (
         consensus_joined_df.filter(~pl.col("bin_uri").str.starts_with("BOLD:"))
@@ -119,8 +116,7 @@ def main():
         .sort("kingdom")
     )
     bins_per_kingdom = (
-        consensus_joined_df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
-        .group_by("kingdom")
+        bold_bin_df.group_by("kingdom")
         .len()
         .rename({"len": "n_bins"})
         .sort("kingdom")
@@ -134,8 +130,7 @@ def main():
         .sort("phylum")
     )
     bins_per_phyla = (
-        consensus_joined_df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
-        .group_by("phylum")
+        bold_bin_df.group_by("phylum")
         .len()
         .rename({"len": "n_bins"})
         .collect()
@@ -144,20 +139,8 @@ def main():
     # calculate total unique species
     total_species = consensus_joined_df.select("species").unique().collect().height
     # calculate total unique species assigned to BOLD BINs
-    total_bin_species = (
-        consensus_joined_df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
-        .select("species")
-        .unique()
-        .collect()
-        .height
-    )
-    total_nonbin_species = (
-        consensus_joined_df.filter(~pl.col("bin_uri").str.starts_with("BOLD:"))
-        .select("species")
-        .unique()
-        .collect()
-        .height
-    )
+    total_bin_species = bold_bin_df.select("species").unique().collect().height
+    total_nonbin_species = bold_bin_df.select("species").unique().collect().height
     # filter to ambiguous species
     ambig_species = consensus_joined_df.filter(
         (pl.col("species").str.contains(r"_X+$"))
