@@ -145,7 +145,12 @@ def main():
         required=True,
     )
     parser.add_argument(
-        "-c", "--col", type=str, help="Column to match by", default="species"
+        "-c",
+        "--col",
+        type=str,
+        help="Column to match by",
+        default="species",
+        choices=["phylum", "class", "order", "family", "genus", "species"],
     )
     parser.add_argument(
         "-o",
@@ -179,6 +184,8 @@ def main():
         help="Checklist key to use for matching",
     )
     args = parser.parse_args()
+    if args.col not in args.ranks:
+        parser.error(f"--col must be one of: {', '.join(args.ranks)}")
     if not args.refine_only:
         sys.stderr.write(f"Reading unique values for {args.col} from {args.infile}\n")
         unique_ids = get_unique(args.infile, args.col)
