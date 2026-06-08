@@ -19,15 +19,56 @@
 
 ## Overview
 
-The coidb package runs a Snakemake workflow under the hood which contains steps
-to filter the BOLD public data to only the COI-5P marker gene, remove leading
-and trailing gaps and sequences with internal gaps and ambiguous nucleotides. It
-also applies a length filtering and only keeps records assigned to a BOLD BIN.
-Steps are also taken to ensure that taxonomic lineages are unique by prefixing
-duplicated taxonomic labels or removing BOLD BINs with unassigned records. The
-filtered sequences are then dereplicated by clustering sequences within each
-BOLD BIN using vsearch. A consensus taxonomy is calculated using an 80%
-consensus threshold starting from species and moving up in the taxonomy tree. 
+The `coidb` package runs a Snakemake workflow under the hood. The graph below
+shows a simplified outline of the steps in the workflow.
+
+```mermaid
+graph TD
+    0 --> 1
+    1 --> 2
+    2 --> 3
+    3 --> 4
+    4 --> 5
+    4 --> 7
+    7 --> 8
+    4 --> 8
+    5 --> 8
+    7 --> 9
+    5 --> 9
+    5 --> 10
+    7 --> 10
+    5 --> 11
+    7 --> 11
+    0("Extract BOLD tarball")
+    1("Filter BOLD data")
+    2("GBIF match species")
+    3("Fill missing values")
+    4("Fix non-unique lineages")
+    5("Calculate taxonomic consensus")
+    7("Cluster sequences per BOLD BIN")
+    8("Calculate statistics")
+    9("Generate SINTAX reference")
+    10("Generate DADA2 reference")
+    11("Generate QIIME2 reference")
+
+```
+
+First a user-supplied BOLD tarball supplied as input is extracted and the
+information in the tab-separated file in the tarball is filtered to only the
+COI-5P marker gene followed by removal of leading and trailing gaps and
+sequences with internal gaps and ambiguous nucleotides. A length filtering is
+applied (with a user-defined minimum length threshold) and only records assigned
+to a BOLD BIN are retained.
+
+Species names are then matched to the GBIF taxonomy (optional), missing
+taxonomic information is filled and taxonomic lineages are made unique by
+prefixing duplicated taxonomic labels. 
+
+Sequences are then dereplicated by clustering sequences within each BOLD BIN
+using vsearch. 
+
+A consensus taxonomy is calculated using a user-defined consensus threshold starting
+from species and moving up in the taxonomy tree. 
 
 Finally, fasta and tab separated files compatible with SINTAX, DADA2 and QIIME2
 are generated.
@@ -82,7 +123,7 @@ docker pull ghcr.io/insect-biome-atlas/coidb
 
 We recommend to run `coidb` on a system with at least 4 cores and 16 GB RAM.
 During runs, roughly 75-100 GB of disk space will be used which will be reduced
-to ~6 GB upon completion. The full run takes roughly 3 hours on a MacBook Pro
+to ~6 GB upon completion. The full run takes roughly 5 hours on a MacBook Pro
 Laptop running with 4 cores.
 
 ## Obtain data
@@ -151,13 +192,14 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
 ```bash
 --input-file       -i PATH        Input tar.gz archive dowloaded from BOLD.
 --output-dir       -o PATH        Folder to store database files in [default: results]
---account          -A TEXT        SLURM compute account [default: None]
 --temp-dir            PATH        Folder for temporary files [default: tmp]
---gbif-backbone                   Use GBIF backbone to infer consensus taxonomy for BOLD BINs
+--account          -A TEXT        SLURM compute account [default: None]
+--gbif-backbone                   Match BOLD species name to GBIF backbone using pygbif package
+--gbif-checklistkey   TEXT        Checklist key to use when matching species names to GBIF [default: 7ddf754f-d193-4cc9-b351-99906754a03b]
 --consensus-threshold INTEGER     Threshold (in %) when calculating consensus taxonomy [default: 80]
 --consensus-method    [rank|full] Method to use when calculating consensus [default: rank]
---vsearch-identity    FLOAT       Identity at which to cluster sequences per BIN [default: 1.0]
 --ranks               TEXT        Ranks to use for calculating consensus and generating fastas [default: kingdom, phylum, class, order, family, genus, species]
+--vsearch-identity    FLOAT       Identity at which to cluster sequences per BIN [default: 1.0]
 --min-len             INTEGER     Minimum length of sequences to include [default: 500]
 --batch-size          INTEGER     Number of BOLD BINs per batch for running vsearch [default: 50000]
 ```
@@ -167,13 +209,20 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
   data](#obtain-data) below). 
 * The `--output-dir` or `-o` argument is a directory in which the output from
   `coidb` will be stored (see details under [Output](#output) below).
-* The `--account` or `-A` argument sets a compute account for running on SLURM
-  clusters (see [Cluster execution](#cluster-execution) below).
 * The `--temp-dir` argument sets a directory to use for storing temporary
   output. This directory can be deleted once `coidb` finishes.
-* The `--gbif-backbone` argument instructs `coidb` to use the GBIF backbone
-  taxonomy to infer taxonomic information for BOLD BINs. Note that this option
-  is currently not reliable because of outdated GBIF data.
+* The `--account` or `-A` argument sets a compute account for running on SLURM
+  clusters (see [Cluster execution](#cluster-execution) below).
+* The `--gbif-backbone` argument instructs `coidb` to match species names from
+  BOLD to GBIF using the [pygbif](https://pygbif.readthedocs.io/en/latest/)
+  python package and use the information to calculate a taxonomic consensus for
+  BOLD BINs.
+* The `--gbif-checklistkey` argument specifies what taxonomic backbone to use
+  for the matching. The default is to use the [Catalogue of
+  Life](https://www.gbif.org/dataset/7ddf754f-d193-4cc9-b351-99906754a03b) key
+  (`7ddf754f-d193-4cc9-b351-99906754a03b`). Set this to
+  `d7dddbf4-2cf0-4f39-9b2a-bb099caae36c` to instead use the [GBIF Backbone
+  Taxonomy](https://www.gbif.org/dataset/d7dddbf4-2cf0-4f39-9b2a-bb099caae36c).
 * The `--consensus-threshold` specifies a threshold in percent when calculating
   consensus taxonomies for BOLD BINs. 
 * The `--consensus-method` argument specifies how the consensus taxonomy is
@@ -184,12 +233,12 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
   the BOLD BIN. With `full`, a consensus is applied by taking into account the
   parent lineages at each rank, so starting with all labels from
   kingdom->species, then kingdom->genus etc.
-* The `--vsearch-identity` argument specifies the identity threshold to use when
-  clustering sequences with vsearch. The default is `1.0` meaning sequences are
-  clustered at 100% identity.
 * The `--ranks` argument specifies what taxonomic ranks to use. This applies
   both to what ranks are included in the final output and what ranks are used to
   calculate the consensus taxonomy.
+* The `--vsearch-identity` argument specifies the identity threshold to use when
+  clustering sequences with vsearch. The default is `1.0` meaning sequences are
+  clustered at 100% identity.
 * The `--min-len` argument sets a minimum length for sequences to include in the
   final output.
 * The `--batch-size` argument sets the number of BOLD bins to process with
@@ -197,7 +246,9 @@ To see a list of all arguments, run `coidb run -h`. The available arguments are 
   graph by splitting the input sequences into batches with `batch-size` number
   of BOLD bins per file.
 
-In addition to these command line arguments there are some arguments that define how `coidb` runs on your system and which are similar to how you typically interact with Snakemake workflows:
+In addition to these command line arguments there are some arguments that define
+how `coidb` runs on your system and which are similar to how you typically
+interact with Snakemake workflows:
 
 ```bash
 --config             FILE     Path to snakemake config file. Overrides existing workflow configuration. [default: None] 
@@ -273,7 +324,7 @@ docker run \
   -v $(pwd)/data:/data \
   -v $(pwd)/releases/04-Jul-2025:/releases/04-Jul-2025 \
   ghcr.io/insect-biome-atlas/coidb \
-  coidb run \
+  run \
     -i /data/BOLD_Public.04-Jul-2025.tar.gz \
     -o /releases/04-Jul-2025 \
     -c 4 \
@@ -309,8 +360,9 @@ and inside the container:
 The line with `ghcr.io/insect-biome-atlas/coidb` refers to the Docker image that
 you will use to run the container.
 
-The line with `coidb run` is the command you will run inside the container and
-what follows are command line arguments passed to `coidb`:
+The line with `run` is the command you will run inside the container. The image 
+entrypoint is `coidb` so `run` is added to this command and what follows are 
+command line arguments passed to `coidb`:
 
 * `-i /data/BOLD_Public.04-Jul-2025.tar.gz` instructs `coidb` to use the Data
   Package file as input (the path is the one mounted inside the container)
@@ -366,6 +418,10 @@ command.
 
 The primary outputs from a run are placed in the directory set by the `--output-dir` command line argument (default: `results/`). These include:
 
+#### Sequence and info file
+
+The `coidb/` subdir contains the following files:
+
 * `coidb.clustered.fasta.gz`: A fasta file with sequences clustered at whatever
    threshold set in the config file (default is 1.0 which means 100% identity).
    Sequence ids in this file correspond to process_ids, _e.g._ `BPALB370-17`,
@@ -377,17 +433,33 @@ The primary outputs from a run are placed in the directory set by the `--output-
 * `coidb.info.tsv.gz`: This TSV file contains sequence and taxonomic information
   for all records kept after filtering.
 
-* `coidb.BOLD_BIN.consensus_taxonomy.exclNA.tsv.gz`: This TSV file contains the
-  calculated consensus taxonomy of BOLD BINs. If a consensus could not be
-  reached at a certain taxonomic rank, the taxonomic label at that rank is
-  prefixed with 'unresolved.' followed by the label of the lowest consensus
-  rank. The `exclNA` part of the filename means that taxonomic labels
-  corresponding to missing data (those suffixed with `_X`) were ignored when
-  calculating the consensus.
+#### Consensus taxonomy files
 
-* `coidb.BOLD_BIN.consensus_taxonomy.inclNA.tsv.gz`: Same as above, but here all
+The `consensus_taxonomy/` subdir contains the following:
+
+* `coidb.exclNA.tsv.gz`: This TSV file contains the calculated consensus
+  taxonomy of BOLD BINs using the taxonomic information of all filtered records
+  from BOLD. If a consensus could not be reached at a certain taxonomic rank,
+  the taxonomic label at that rank is prefixed with 'unresolved.' followed by
+  the label of the lowest consensus rank. The `exclNA` part of the filename
+  means that taxonomic labels corresponding to missing data (those suffixed with
+  `_X`) were ignored when calculating the consensus.
+
+* `coidb.inclNA.tsv.gz`: Same as above, but here all
   taxonomic labels were taken into account when calculating the consensus (even
   labels corresponding to missing data).
+
+If the workflow was run with the `--gbif-backbone` parameter this folder will also contain the following:
+
+* `gbif.exclNA.tsv.gz`: This TSV file contains consensus
+  taxonomies calculated using taxonomic information obtained by matching species
+  names from BOLD to the GBIF taxonomy with the `pygbif` package. The taxonomies will be
+  compatible with the GBIF backbone (specifically the backbone set with the `--gbif-checklistkey` argument), but will have a limited
+  number of BOLD BINs. The `exclNA` part of the filename means the consensus was
+  calculated as above for `coidb.exclNA.tsv.gz`.
+
+* `gbif.inclNA.tsv.gz`: Same as above, but missing information is ignored as for
+  `coidb.inclNA.tsv.gz`.
 
 > [!IMPORTANT]
 > The consensus taxonomy files described above are used to create the SINTAX,
@@ -399,6 +471,19 @@ The primary outputs from a run are placed in the directory set by the `--output-
 > contain errors due to incorrectly added taxonomic information in the BOLD
 > database. As such, the `inclNA` version represents a more conservative (but
 > less resolved) version of the database.
+
+### Consolidated taxonomy
+
+The `consolidated/consolidated.tsv.gz` file contains the taxonomic assignments
+resulting from consolidating the results from matching species names from BOLD
+using the `pygbif` python package. Only records with species names that could be
+matched exactly and without ambiguity are included in this file.
+
+### GBIF results
+
+The `gbif/gbif.info.tsv.gz` file contains the original species name from BOLD in
+the first `name` column followed by the taxonomic labels resulting from matching
+species names with the `pygbif` package.
 
 ### Log files
 
@@ -427,9 +512,54 @@ the input file you used, while the `_processed/` directory contains _e.g._ the
 
 * `qiime2/coidb.qiime2.info.{exclNA,inclNA}.tsv.gz`: These TSV files can be used with QIIME2 to create a taxonomy artifact for use with the [feature-classifier](https://amplicon-docs.qiime2.org/en/latest/references/plugins/feature-classifier.html#q2-plugin-feature-classifier) plugin. Unzip the file then run `qiime tools import --type 'FeatureData[Taxonomy]' --input-format TSVTaxonomyFormat --input-path coidb.qiime2.inclNA.info.tsv --output-path taxonomy.qza`. The `coidb.clustered.fasta.gz` file can be used to import sequences with `qiime tools import --type 'FeatureData[Sequence]' --input-path coidb.clustered.fasta --output-path seqs.qza`.
 
+
+### Statistics
+
+The `stats/` subdir contains two files with some statistics for the different
+types of the generated database.
+
+* `stats/general_stats.tsv`: This file contains general statistics described below:
+
+| column name | description |
+|-------------|-------------|
+| type | database type (_e.g._ `coidb.exclNA.tsv`) |
+| total_seqs | total sequences in the clustered fasta file (_e.g._ `coidb/coidb.clustered.fasta.gz`) | 
+| total_bins | total number of unique BOLD bins | 
+| mean_seqs_per_bin | mean number of sequences per BOLD bin |
+| median_seqs_per_bin | median number of sequences per BOLD bin |
+| min_seqs_per_bin | minimum number of sequences per BOLD bin |
+| max_seqs_per_bin | maximum number of sequences per BOLD bin |
+| total_non-bins | total number of non-BOLD bins (_e.g._ prokaryotic sequences not assigned to BOLD bins) |
+| total_species | total number of unique species names | 
+| total_bin_species | total number of species for sequences assigned to BOLD bins | 
+| total_nonbin_species | total number of species for sequences assigned to non-BOLD bins |
+| ambiguous_species | number of unique ambiguous species names (names ending with with `_X`) |
+| seqs_in_ambiguous_species | total number of sequences with ambiguous species assignments | 
+| ambiguous_bin_species | number of unique ambiguous species names for sequences assigned to BOLD bins |
+| seqs_in_ambiguous_bin_species | total number of sequences assigned to BOLD bins and with ambiguous species names | 
+| unresolved_species | number of unique unresolved species (prefixed with `unresolved.`) |
+| seqs_in_unresolved_species | total number of sequences assigned to unresolved species | 
+| unresolved_bin_species | number of unresolved species names for sequences assigned to BOLD bins |
+| seqs_in_unresolved_bin_species | total number of sequences assigned to BOLD bins and with unresolved species names |
+| unresolved_ambiguous_species | number of unresolved **and** ambiguous species |
+| seqs_in_unresolved_ambiguous_species | total number of sequences assigned to unresolved **and** ambiguous species | 
+| unresolved_ambiguous_bin_species | number of unresolved **and** ambiguous species for sequences assigned to BOLD bins |
+| seqs_in_unresolved_ambiguous_bin_species | total number of sequences assigned to unresolved **and** ambiguous species for sequences assigned to BOLD bins |
+
+* `stats/taxa_stats.tsv`: This file shows the number of sequences assigned to
+  different kingdoms/phyla per database type:
+
+| column | description |
+|--------|-------------|
+| taxa | taxa name |
+| n_bins | number of unique BOLD bins assigned to taxa |
+| rank | taxonomic rank |
+| name | database name |
+
 ## How it works
 
 ### Filtering
+
 Firstly, the input file is extracted and the TSV file with taxonomic information
 and sequence data for each record is identified. This TSV file is then filtered
 by:
@@ -441,6 +571,14 @@ by:
 5. Stripping any leading and trailing gap (`-`) characters
 6. Removing sequences with remaining gaps
 7. Removing sequences with non DNA characters.
+
+### Species name matching
+
+If running with `--gbif-backbone` (config parameter `gbif_backbone: True`)
+species names from the filtered BOLD output are matched with the `pygbif` python
+package using the checklist key specified with `--gbif-checklistkey` (config
+parameter `gbif_checklistkey`). Only exact matches are used and if alternative
+matches with equal confidence are found the matched name is ignored.
 
 ### Filling missing data
 
@@ -523,14 +661,6 @@ would then become:
 
 This is what the `exclNA` tag refers to in the output files described above (see
 [Output](#output)).
-
-> [!Note]
-> In previous versions of `coidb` the [GBIF backbone
-> taxonomy](https://www.gbif.org/dataset/d7dddbf4-2cf0-4f39-9b2a-bb099caae36c)
-> was used to set taxonomy of BOLD BINs. However, because the backbone data is
-> not up to date we do not recommend using this option at the moment. The
-> functionality is still kept so you can run `coidb` with the command line flag
-> `--gbif-backbone` if you wish.
 
 
 ### Clustering

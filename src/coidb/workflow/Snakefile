@@ -12,59 +12,55 @@ if config["account"] is None:
     config["account"] = "None"
 
 
+pathvars:
+    results=config["output_dir"],
+    temp_dir=config["temp_dir"],
+    logs=os.path.join(config["output_dir"], "_logs"),
+
+
 localrules:
     extract_input,
     gzip,
     collect_vsearch,
-    concat_timestamps,
 
 
 wildcard_constraints:
-    n="backbone|coidb",
+    n="gbif|coidb",
     suffix="tsv|fasta",
     format="sintax|dada2.toGenus|dada2.toSpecies|dada2.addSpecies",
+    consensus_type="coidb|gbif",
     tool="sintax|dada2",
     s="inclNA|exclNA",
 
 
 def all_input(wildcards):
-    input = expand(
-        "{output_dir}/{f}",
-        output_dir=config["output_dir"],
-        f=["coidb.info.tsv.gz", "timestamps.txt"],
+    consensus_type = ["coidb", "gbif"] if config["gbif_backbone"] else ["coidb"]
+    input = ["<results>/coidb/coidb.info.tsv.gz", "<results>/input_timestamp.txt"]
+    input += expand(
+        "<results>/stats/{stats_type}.tsv",
+        stats_type=["general_stats", "taxa_stats"],
     )
     input += expand(
-        "{output_dir}/coidb.stats.{s}.txt",
-        output_dir=config["output_dir"],
+        "<results>/consensus_taxonomy/{consensus_type}.{s}.tsv.gz",
+        consensus_type=consensus_type,
         s=["exclNA", "inclNA"],
     )
     input += expand(
-        "{output_dir}/coidb.BOLD_BIN.consensus_taxonomy.{s}.tsv.gz",
-        output_dir=config["output_dir"],
+        "<results>/dada2/{consensus_type}.{format}.{s}.fasta.gz",
+        consensus_type=consensus_type,
+        format=["dada2.toGenus", "dada2.toSpecies", "dada2.addSpecies"],
         s=["exclNA", "inclNA"],
     )
     input += expand(
-        "{output_dir}/dada2/coidb.dada2.{t}.{s}.fasta.gz",
-        output_dir=config["output_dir"],
-        t=["toGenus", "toSpecies", "addSpecies"],
+        "<results>/sintax/{consensus_type}.sintax.{s}.fasta.gz",
+        consensus_type=consensus_type,
         s=["exclNA", "inclNA"],
     )
     input += expand(
-        "{output_dir}/sintax/coidb.sintax.{s}.fasta.gz",
-        output_dir=config["output_dir"],
+        "<results>/qiime2/{consensus_type}.qiime2.info.{s}.tsv.gz",
+        consensus_type=consensus_type,
         s=["exclNA", "inclNA"],
     )
-    input += expand(
-        "{output_dir}/qiime2/coidb.qiime2.info.{s}.tsv.gz",
-        output_dir=config["output_dir"],
-        s=["exclNA", "inclNA"],
-    )
-    if config["gbif_backbone"]:
-        input += expand(
-            "{output_dir}/{f}",
-            output_dir=config["output_dir"],
-            f=["backbone.info.tsv.gz"],
-        )
     return input
 
 
@@ -74,30 +70,28 @@ rule all:
 
 
 rule gzip:
-    message:
-        "Compressing {wildcards.f}.{wildcards.suffix}"
     input:
         "{f}.{suffix}",
     output:
         "{f}.{suffix}.gz",
+    message:
+        "Compressing {wildcards.f}.{wildcards.suffix}"
     shell:
         """
         gzip -c {input} > {output}
         """
 
 
+# This checkpoint extracts the input tarball (if specified).
 checkpoint extract_input:
-    """
-    This checkpoint extracts the input tarball (if specified).
-    """
-    message:
-        "Extracting input file {config[input_file]}"
     input:
         tarball=config["input_file"],
     output:
         directory(os.path.join(config["temp_dir"], "_extract")),
     log:
-        os.path.join(config["output_dir"], "_logs/extract_input.log"),
+        "<logs>/extract_input.log",
+    message:
+        "Extracting input file {config[input_file]}"
     shell:
         """
         rm -rf {output}
@@ -123,37 +117,32 @@ def get_extracted(wildcards):
     return tsv
 
 
+# This rule filters the input data by:
+# 1. Selecting a subset of columns
+# 2. Only keeping records matching COI-5P as 'marker_code'
+# 3. Only keeping records with an assigned BOLD BIN
+# 4. Only keeping records with a sequence length >= min_len (default 500)
+# 5. Strips leading and trailing '-' characters
+# 6. Removes sequences with with remaining gaps
+# 7. Removes sequences with non DNA characters
+# For prokaryotic records lines are kept in step 3 even if no BOLD BIN is
+# assigned.
 rule filter:
-    """
-    This rule filters the input data by:
-    1. Selecting a subset of columns
-    2. Only keeping records matching COI-5P as 'marker_code'
-    3. Only keeping records with an assigned BOLD BIN
-    4. Only keeping records with a sequence length >= min_len (default 500)
-    5. Strips leading and trailing '-' characters
-    6. Removes sequences with with remaining gaps
-    7. Removes sequences with non DNA characters
-
-    For prokaryotic records lines are kept in step 3 even if no BOLD BIN is
-    assigned.
-    """
-    message:
-        "Filter data to only include BOLD BIN records, trim and remove spurious sequences"
     input:
         tsv=get_extracted,
     output:
-        tsv=temp(os.path.join(config["temp_dir"], "_processed/data.filtered.tsv")),
-        timestamp=temp(
-            expand("{output_dir}/input_timestamp.txt", output_dir=config["output_dir"])
-        ),
+        tsv=temp("<temp_dir>/_processed/data.filtered.tsv"),
+        timestamp="<results>/input_timestamp.txt",
     log:
-        os.path.join(config["output_dir"], "_logs/filter.log"),
-    params:
-        min_len=config["min_len"],
-        input_file=config["input_file"],
+        "<logs>/filter.log",
     threads: 4
     resources:
         slurm_account=config["account"],
+    params:
+        min_len=config["min_len"],
+        input_file=config["input_file"],
+    message:
+        "Filter data to only include BOLD BIN records, trim and remove spurious sequences"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
@@ -164,138 +153,160 @@ rule filter:
         """
 
 
-def fill_missing_input(wildcards):
-    if wildcards.n == "backbone":
-        return rules.parse_backbone.output[0]
-    elif wildcards.n == "coidb":
-        return rules.filter.output.tsv
-
-
-rule fill_missing:
-    """
-    This rule fills in missing ranks in taxonomic dataframes.
-    """
-    message:
-        "Filling missing ranks for {wildcards.n} data"
+# This rules matches species names from BOLD to species names in Catalog of Life
+rule gbif_match:
     input:
-        fill_missing_input,
+        tsv=rules.filter.output.tsv,
     output:
-        tsv=temp(os.path.join(config["temp_dir"], "{n}.info.fill-missing.tsv")),
+        tsv=temp("<temp_dir>/gbif/species-matched.tsv"),
+        tsv_unrefined=temp("<temp_dir>/gbif/species-matched.raw.tsv"),
     log:
-        os.path.join(config["output_dir"], "_logs/fill_missing.{n}.log"),
+        "<logs>/gbif_match.log",
     threads: 4
     resources:
         slurm_account=config["account"],
+    params:
+        ranks=["kingdom", "phylum", "class", "order", "family", "genus", "species"],
+        checklist_key=(
+            f"--checklist_key {config['gbif_checklistkey']}"
+            if config["gbif_checklistkey"] is not None
+            else ""
+        ),
+    message:
+        "Matching BOLD species names to GBIF"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
-        fill-missing -i {input} -o {output.tsv} 2>{log}
+        match-names -i {input.tsv} -c species \
+            -p {threads} -r {params.ranks} {params.checklist_key} \
+            --unrefined_out {output.tsv_unrefined} -o {output.tsv} > {log} 2>&1
         """
 
 
-rule fix_nonunique:
-    """
-    This rule identifies non-unique lineages and fixes these either by removing
-    BINs with unassigned ranks or by prefixing taxa with parent ranks.
-    """
+def fill_missing_input(wildcards):
+    if wildcards.n == "coidb":
+        return rules.filter.output.tsv
+    elif wildcards.n == "gbif":
+        return rules.gbif_match.output.tsv
+
+
+# This rule fills in missing ranks in taxonomic dataframes.
+rule fill_missing:
+    input:
+        tsv=fill_missing_input,
+    output:
+        tsv=temp("<temp_dir>/{n}/{n}.info.fill-missing.tsv"),
+    log:
+        "<logs>/fill_missing.{n}.log",
+    threads: 4
+    resources:
+        slurm_account=config["account"],
     message:
-        "Fixing non-unique lineages"
+        "Filling missing ranks for filtered {wildcards.n} data"
+    shell:
+        """
+        export POLARS_MAX_THREADS={threads}
+        fill-missing -i {input.tsv} -o {output.tsv} 2>{log}
+        """
+
+
+# This rule identifies non-unique lineages and fixes these by prefixing taxa
+# with parent ranks.
+rule fix_nonunique:
     input:
         tsv=rules.fill_missing.output.tsv,
     output:
-        tsv=temp(os.path.join(config["output_dir"], "{n}.info.tsv")),
+        tsv=temp("<results>/{n}/{n}.info.tsv"),
     log:
-        os.path.join(config["output_dir"], "_logs/fix_nonunique.{n}.log"),
+        "<logs>/fix_nonunique.{n}.log",
     threads: 4
     resources:
         slurm_account=config["account"],
+    params:
+        id_col=lambda wildcards: "name" if wildcards.n == "gbif" else "bin_uri",
+    message:
+        "Fixing non-unique lineages for {wildcards.n} data"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
-        fix-nonunique-lineages -i {input.tsv} -o {output.tsv} 2>{log}
+        fix-nonunique-lineages -i {input.tsv} --id_col {params.id_col} -o {output.tsv} 2>{log}
         """
 
 
-if config["gbif_backbone"]:
-
-    include: "rules/match_names.smk"
+# Update names in coidb.info.tsv based on matched taxa names in GBIF backbone
+rule consolidate_names:
+    input:
+        coidb="<results>/coidb/coidb.info.tsv.gz",
+        gbif="<results>/gbif/gbif.info.tsv.gz",
+    output:
+        tsv=temp("<results>/consolidated/consolidated.tsv"),
+    log:
+        "<logs>/consolidate_names.log",
+    threads: 4
+    resources:
+        slurm_account=config["account"],
+    message:
+        "Consolidating taxonomy based on GBIF matches"
+    shell:
+        """
+        export POLARS_MAX_THREADS={threads}
+        consolidate-names -i {input.coidb} -m {input.gbif} -o {output.tsv} >{log} 2>&1
+        """
 
 
 def consensus_input(wildcards):
-    """
-    Feeds input files to calculate_consensus rule.
-
-    If --gbif-backbone command line parameter is used, the GBIF backbone files
-    is also passed.
-    """
-    input = {}
-    input["tsv"] = os.path.join(config["output_dir"], "coidb.info.tsv")
-    if config["gbif_backbone"]:
-        input["backbone"] = (os.path.join(config["output_dir"], "backbone.info.tsv"),)
-    return input
+    if wildcards.consensus_type == "coidb":
+        return "<results>/coidb/coidb.info.tsv.gz"
+    elif wildcards.consensus_type == "gbif":
+        return "<results>/consolidated/consolidated.tsv.gz"
 
 
+# This rule calculates a consensus taxonomy for BOLD BINs.
 rule calculate_consensus:
-    """
-    This rule calculates a consensus taxonomy for BOLD BINs. It uses as input
-    both the BOLD data and the GBIF backbone. If BINs are present in the
-    backbone this information takes precedence.
-    """
-    message:
-        "Calculating consensus taxonomy for BINs"
     input:
-        unpack(consensus_input),
+        tsv=consensus_input,
     output:
-        tsv=temp(
-            os.path.join(
-                config["output_dir"], "coidb.BOLD_BIN.consensus_taxonomy.{s}.tsv"
-            )
-        ),
+        tsv=temp("<results>/consensus_taxonomy/{consensus_type}.{s}.tsv"),
     log:
-        os.path.join(config["output_dir"], "_logs/calculate_consensus.{s}.log"),
+        "<logs>/calculate_consensus/{consensus_type}.{s}.log",
+    threads: 4
+    resources:
+        slurm_account=config["account"],
     params:
-        threshold=config["consensus_threshold"],
         ranks=config["ranks"],
+        threshold=config["consensus_threshold"],
         method=config["consensus_method"],
-        bb=lambda wildcards, input: (
-            f"-u {input.backbone} --write_existing {config['output_dir']}/coidb.BOLD_BIN.consensus_taxonomy.from-backbone.{wildcards.s}.tsv"
-            if config["gbif_backbone"]
-            else ""
-        ),
         exclude_missing=lambda wildcards: (
             "--exclude_missing_data" if wildcards.s == "exclNA" else ""
         ),
-    threads: 1
-    resources:
-        slurm_account=config["account"],
+    message:
+        "Calculating consensus taxonomy for BINs"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
         consensus-taxonomy -i {input.tsv} -o {output.tsv} \
-            {params.bb} -r {params.ranks} -m {params.method} \
+            -r {params.ranks} -m {params.method} \
             {params.exclude_missing} -t {params.threshold} -p {threads} 2>{log}
         """
 
 
+# BINs with more than 1 record are subject to clustering with vsearch. This
+# checkpoint identifies all such BINs and prepares input for vsearch
+# clustering. To avoid too large workflow graph, the BINs are grouped into
+# batches with the batch size determined by the '--batch-size' command line
+# argument.
 checkpoint batch_multi_record_bins:
-    """
-    BINs with more than 1 record are subject to clustering with vsearch. This
-    checkpoint identifies all such BINs and prepares input for vsearch
-    clustering. To avoid too large workflow graph, the BINs are grouped into
-    batches with the batch size determined by the '--batch-size' command line
-    argument.
-    """
     input:
-        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
+        tsv="<results>/coidb/coidb.info.tsv.gz",
     output:
-        directory(os.path.join(config["temp_dir"], "_batch")),
+        directory("<temp_dir>/_batch"),
     log:
-        os.path.join(config["output_dir"], "_logs/batch_multi_record_bins.log"),
-    params:
-        batch_size=config["batch_size"],
+        "<logs>/batch_multi_record_bins.log",
+    threads: 4
     resources:
         slurm_account=config["account"],
-    threads: 4
+    params:
+        batch_size=config["batch_size"],
     shell:
         """
         exec &>{log}
@@ -305,33 +316,23 @@ checkpoint batch_multi_record_bins:
         """
 
 
+# This rule clusters sequences for each batch of BOLD BINs.
 rule vsearch:
-    """
-    This rule clusters sequences for each batch of BOLD BINs.
-    """
-    message:
-        "Clustering sequences in batch_{wildcards.batch_id}"
     input:
-        fasta=os.path.join(config["temp_dir"], "_batch/batch_{batch_id}.fasta"),
+        fasta="<temp_dir>/_batch/batch_{batch_id}.fasta",
     output:
-        fasta=temp(
-            expand(
-                "{tempdir}/_vsearch/batch_{{batch_id}}.fasta",
-                tempdir=config["temp_dir"],
-            )
-        ),
+        fasta=temp("<temp_dir>/_vsearch/batch_{batch_id}.fasta"),
     log:
-        expand(
-            "{output_dir}/_logs/vsearch_logs/batch_{{batch_id}}.log",
-            output_dir=config["output_dir"],
-        ),
-    threads: 1
-    params:
-        id=config["vsearch_identity"],
-    resources:
-        slurm_account=config["account"],
+        "<logs>/vsearch_logs/batch_{batch_id}.log",
     shadow:
         "minimal"
+    threads: 4
+    resources:
+        slurm_account=config["account"],
+    params:
+        id=config["vsearch_identity"],
+    message:
+        "Clustering sequences in batch_{wildcards.batch_id}"
     shell:
         """
         exec &>{log}
@@ -363,56 +364,105 @@ def get_vsearch_fastas(wildcards):
     )
 
 
+# This rule concatenates all the vsearch clustered fasta files with
+# single-record BIN fastas.
 rule collect_vsearch:
-    """
-    This rule concatenates all the vsearch clustered fasta files with
-    single-record BIN fastas.
-    """
-    message:
-        "Collecting clustered and single-record BIN fastas"
     input:
         fasta=get_vsearch_fastas,
-        tsv=os.path.join(config["output_dir"], "coidb.info.tsv"),
+        tsv="<results>/coidb/coidb.info.tsv.gz",
     output:
-        fasta=os.path.join(config["output_dir"], "coidb.clustered.fasta.gz"),
+        fasta="<results>/coidb/coidb.clustered.fasta.gz",
     log:
-        os.path.join(config["output_dir"], "_logs/collect_vsearch.log"),
+        "<logs>/collect_vsearch.log",
     shadow:
         "minimal"
     threads: 4
     resources:
         slurm_account=config["account"],
+    message:
+        "Collecting clustered and single-record BIN fastas"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
         exec &>{log}
         bold2fasta -i {input.tsv} -o singles.fasta --single --low_memory
-        cat {input.fasta} singles.fasta | gzip -c > {output.fasta}
+        cat {input.fasta} singles.fasta | seqkit seq -j {threads} -u -o {output.fasta}
         """
 
 
+# Generate statistics on created database
 rule stats:
-    """
-    Generate statistics on created database
-    """
-    message:
-        "Generating statistics"
     input:
         fasta=rules.collect_vsearch.output.fasta,
-        tsv=os.path.join(config["output_dir"], "coidb.info.tsv.gz"),
-        consensus=rules.calculate_consensus.output,
+        consensus="<results>/consensus_taxonomy/{consensus_type}.{s}.tsv.gz",
     output:
-        os.path.join(config["output_dir"], "coidb.stats.{s}.txt"),
+        general=temp("<results>/stats/{consensus_type}.{s}.general_stats.tsv"),
+        taxa=temp("<results>/stats/{consensus_type}.{s}.taxa_stats.tsv"),
     log:
-        os.path.join(config["output_dir"], "_logs/stats.{s}.log"),
+        "<logs>/stats.{consensus_type}.{s}.log",
+    threads: 1
     resources:
         slurm_account=config["account"],
-    threads: 1
+    message:
+        "Generating statistics"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
-        coidb-stats --tsv {input.tsv} --fasta {input.fasta} --consensus {input.consensus} > {output} 2>{log}
+        coidb-stats --fasta {input.fasta} --consensus {input.consensus} --general_stats_out {output.general} --taxa_stats_out {output.taxa} 2>{log}
         """
+
+
+def stats_input(wildcards):
+    input = {"general": [], "taxa": []}
+    consensus_type = ["coidb"]
+    if config["gbif_backbone"]:
+        consensus_type.append("gbif")
+    return {
+        "general": expand(
+            "<results>/stats/{consensus_type}.{s}.general_stats.tsv",
+            consensus_type=consensus_type,
+            s=["exclNA", "inclNA"],
+        ),
+        "taxa": expand(
+            "<results>/stats/{consensus_type}.{s}.taxa_stats.tsv",
+            consensus_type=consensus_type,
+            s=["exclNA", "inclNA"],
+        ),
+    }
+
+
+rule aggregate_stats:
+    input:
+        unpack(stats_input),
+    output:
+        general="<results>/stats/general_stats.tsv",
+        taxa="<results>/stats/taxa_stats.tsv",
+    threads: 1
+    resources:
+        slurm_account=config["account"],
+    message:
+        "Aggregating statistics"
+    run:
+        import polars as pl
+        import os
+
+        df = pl.DataFrame()
+        for i, f in enumerate(input.general):
+            _df = pl.read_csv(f, separator="\t")
+            if i == 0:
+                df = _df
+            else:
+                df = pl.concat([df, _df])
+        df.write_csv(output.general, separator="\t")
+        df = pl.DataFrame()
+        for i, f in enumerate(input.taxa):
+            name = os.path.basename(f).replace(".taxa_stats.tsv", "")
+            _df = pl.read_csv(f, separator="\t").with_columns(name=pl.lit(name))
+            if i == 0:
+                df = _df
+            else:
+                df = pl.concat([df, _df])
+        df.write_csv(output.taxa, separator="\t")
 
 
 def get_kv_format(wildcards):
@@ -428,23 +478,27 @@ def get_kv_format(wildcards):
 
 
 rule generate_kv_file:
-    message:
-        "Generate key-value file for {wildcards.tool} ({wildcards.format} {wildcards.s})"
     input:
-        rules.calculate_consensus.output.tsv,
+        tsv="<results>/consensus_taxonomy/{consensus_type}.{s}.tsv.gz",
+        fasta=rules.collect_vsearch.output.fasta,
     output:
-        txt=temp(os.path.join(config["output_dir"], "{tool}/coidb.{format}.{s}.txt")),
+        txt=temp("<results>/{tool}/{format}.{consensus_type}.{s}.txt"),
+        ids=temp("<results>/{tool}/{format}.{consensus_type}.{s}.ids"),
     log:
-        os.path.join(
-            config["output_dir"], "_logs/generate_kv_file.{tool}.{format}.{s}.txt"
-        ),
+        "<logs>/generate_kv_file.{tool}.{format}.{consensus_type}.{s}.txt",
     threads: 1
     resources:
         slurm_account=config["account"],
+    message:
+        "Generate key-value file for {wildcards.tool} ({wildcards.format} {wildcards.consensus_type} {wildcards.s})"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
-        coidb-format --consensus {input} --outfile {output} --format {wildcards.format} 2>{log}
+        coidb-format --fasta {input.fasta} \
+            --consensus {input.tsv} \
+            --outfile {output.txt} \
+            --idfile {output.ids} \
+            --format {wildcards.format} 2>{log}
         """
 
 
@@ -459,21 +513,18 @@ def get_seqkit_pattern(wildcards):
             return "'.+ (.+)$'"
 
 
+# This rule uses key-value files to generate sintax and dada2 formatted fasta
+# files with seqkit.
 rule format:
-    """
-    This rule uses key-value files to generate sintax and dada2 formatted fasta
-    files with seqkit.
-    """
-    message:
-        "Generate DADA2 format fasta files"
     input:
         kv_file=rules.generate_kv_file.output.txt,
+        ids=rules.generate_kv_file.output.ids,
         fasta=rules.collect_vsearch.output.fasta,
-        consensus=rules.calculate_consensus.output.tsv,
     output:
-        fasta=os.path.join(config["output_dir"], "{tool}/coidb.{format}.{s}.fasta.gz"),
+        fasta="<results>/{tool}/{consensus_type}.{format}.{s}.fasta.gz",
     log:
-        os.path.join(config["output_dir"], "_logs/format_{tool}.{format}.{s}.log"),
+        "<logs>/format_{tool}.{consensus_type}.{format}.{s}.log",
+    threads: 4
     resources:
         slurm_account=config["account"],
     params:
@@ -481,53 +532,32 @@ rule format:
         replace=lambda wildcards: (
             " {kv}" if wildcards.format == "dada2.addSpecies" else "{kv}"
         ),
-    threads: 4
+    message:
+        "Generate {wildcards.tool} ({wildcards.consensus_type}/{wildcards.format}/{wildcards.s}) fasta files"
     shell:
         """
-        seqkit replace -j {threads} -p {params.pattern} -r '{params.replace}' -k {input.kv_file} -o {output.fasta} {input.fasta} >{log} 2>&1
+        exec &>{log}
+        seqkit grep -j {threads} -f {input.ids} {input.fasta} | seqkit replace -j {threads} -p {params.pattern} -r '{params.replace}' -k {input.kv_file} -o {output.fasta}
         """
 
 
+# This rule formats the tsv file for use with QIIME2 via qiime tools import
+# --type 'FeatureData[Taxonomy]' --input-format TSVTaxonomyFormat
 rule format_qiime2:
-    """
-    This rule formats the tsv file for use with QIIME2 via
-    qiime tools import --type 'FeatureData[Taxonomy]' --input-format TSVTaxonomyFormat
-    """
-    message:
-        "Generate QIIME2 compatible TSV file"
     input:
         fasta=rules.collect_vsearch.output.fasta,
-        consensus=rules.calculate_consensus.output.tsv,
+        consensus="<results>/consensus_taxonomy/{consensus_type}.{s}.tsv.gz",
     output:
-        temp(os.path.join(config["output_dir"], "qiime2", "coidb.qiime2.info.{s}.tsv")),
+        temp("<results>/qiime2/{consensus_type}.qiime2.info.{s}.tsv"),
     log:
-        os.path.join(config["output_dir"], "_logs", "format_qiime2.{s}.log"),
+        "<logs>/format_qiime2.{consensus_type}.{s}.log",
+    threads: 4
     resources:
         slurm_account=config["account"],
-    threads: 4
+    message:
+        "Generate QIIME2 compatible TSV file"
     shell:
         """
         export POLARS_MAX_THREADS={threads}
         coidb-format --fasta {input.fasta} --consensus {input.consensus} --format qiime2 --outfile {output} 2>{log}
-        """
-
-
-def timestamp_input(wildcards):
-    input = [rules.filter.output.timestamp[0]]
-    if config["gbif_backbone"]:
-        input.append(rules.download_backbone.output.timestamp[0])
-    return input
-
-
-rule concat_timestamps:
-    """
-    This rule combines the timestamp files into a single file.
-    """
-    output:
-        os.path.join(config["output_dir"], "timestamps.txt"),
-    input:
-        timestamp_input,
-    shell:
-        """
-        cat {input} > {output}
         """

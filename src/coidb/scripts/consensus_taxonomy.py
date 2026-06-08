@@ -36,13 +36,10 @@ def calculate_consensus(
     Calculate consensus taxonomy for a dataframe. The dataframe is expected to
     have the following format:
 
-    kingdom     phylum          class       order           family
-    genus       species         bin_uri         n   bin_rows "Animalia"
-    "Arthropoda"    "Insecta"   "Lepidoptera"   "Oecophoridae"  "Garrha"
-    "Garrha carnea" "BOLD:AGS2783"  41  3 "Animalia"  "Arthropoda"    "Insecta"
-    "Lepidoptera"   "Oecophoridae"  "Garrha"    "Garrha_X"      "BOLD:AGS2783"
-    7   3 "Animalia"  "Arthropoda"    "Insecta"   "Lepidoptera"   "Oecophoridae"
-    "Garrha"    "Garrha sp."    "BOLD:AGS2783"  2   3
+    kingdom     phylum        class     order          family           genus    species         bin_uri         n   bin_rows
+    "Animalia"  "Arthropoda" "Insecta"  "Lepidoptera"  "Oecophoridae"  "Garrha"  "Garrha carnea" "BOLD:AGS2783"  41  3
+    "Animalia"  "Arthropoda" "Insecta"  "Lepidoptera"  "Oecophoridae"  "Garrha"  "Garrha_X"      "BOLD:AGS2783"  7   3
+    "Animalia"  "Arthropoda" "Insecta"  "Lepidoptera"  "Oecophoridae"  "Garrha"  "Garrha sp."    "BOLD:AGS2783"  2   3
 
     If method == 'full', the function iterates over the length of the ranks
     list, the first time this list contains all ranks: ['kingdom', 'phylum',

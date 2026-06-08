@@ -17,109 +17,47 @@ def main():
     tsv = pl.scan_csv(
         args.infile, has_header=True, separator="\t", null_values=["None"]
     )
-    (
-        tsv.with_columns(
-            # if kingdom is null, set to "unassigned"
-            pl.when(pl.col("kingdom").is_null())
-            .then(pl.col("kingdom").fill_null("unassigned"))
-            .otherwise(pl.col("kingdom"))
-            .alias("kingdom")
-        )
-        .with_columns(
+    columns = tsv.collect_schema().names()
+    ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
+    for rank in ranks:
+        if rank in columns:
+            if rank == "kingdom":
+                # if kingdom is null, set to "unassigned"
+                tsv = tsv.with_columns(
+                    pl.when(pl.col(rank).is_null())
+                    .then(pl.col(rank).fill_null("unassigned"))
+                    .otherwise(pl.col(rank))
+                    .alias(rank)
+                )
             # if phylum is null, set to kingdom + "_X"
-            pl.when(pl.col("phylum").is_null())
-            .then(pl.col("kingdom") + "_X")
-            .otherwise(pl.col("phylum"))
-            .alias("phylum")
-        )
-        .with_columns(
-            # if class is null, and phylum does not end in "_X", set to ph_fixed + "_X"
-            pl.when(
-                (pl.col("class").is_null()) & (~pl.col("phylum").str.contains(r"_X+$"))
-            )
-            .then(pl.col("phylum") + "_X")
-            .otherwise(pl.col("class"))
-            .alias("class")
-        )
-        .with_columns(
-            # if class is null, and phylum ends in "_X", set to phylum + "X"
-            pl.when(
-                (pl.col("class").is_null()) & (pl.col("phylum").str.contains(r"_X+$"))
-            )
-            .then(pl.col("phylum") + "X")
-            .otherwise(pl.col("class"))
-            .alias("class")
-        )
-        .with_columns(
-            # if order is null and class does not end in "_X", add "_X"
-            pl.when(
-                (pl.col("order").is_null()) & (~pl.col("class").str.contains(r"_X+$"))
-            )
-            .then(pl.col("class") + "_X")
-            .otherwise(pl.col("order"))
-            .alias("order")
-        )
-        .with_columns(
-            # if order is null and class ends with "_X", add "X"
-            pl.when(
-                (pl.col("order").is_null()) & (pl.col("class").str.contains(r"_X+$"))
-            )
-            .then(pl.col("class") + "X")
-            .otherwise(pl.col("order"))
-            .alias("order")
-        )
-        .with_columns(
-            # if family is null and order does not end in "_X", add "_X"
-            pl.when(
-                (pl.col("family").is_null()) & (~pl.col("order").str.contains(r"_X+$"))
-            )
-            .then(pl.col("order") + "_X")
-            .otherwise(pl.col("family"))
-            .alias("family")
-        )
-        .with_columns(
-            # if family is null and order ends in "_X", add "X"
-            pl.when(
-                (pl.col("family").is_null()) & (pl.col("order").str.contains(r"_X+$"))
-            )
-            .then(pl.col("order") + "X")
-            .otherwise(pl.col("family"))
-            .alias("family")
-        )
-        .with_columns(
-            # if genus is null and family does not end in "_X", add "_X"
-            pl.when(
-                (pl.col("genus").is_null()) & (~pl.col("family").str.contains(r"_X+$"))
-            )
-            .then(pl.col("family") + "_X")
-            .otherwise(pl.col("genus"))
-            .alias("genus")
-        )
-        .with_columns(
-            # if genus is null and family ends in "_X", add "X"
-            pl.when(
-                (pl.col("genus").is_null()) & (pl.col("family").str.contains(r"_X+$"))
-            )
-            .then(pl.col("family") + "X")
-            .otherwise(pl.col("genus"))
-            .alias("genus")
-        )
-        .with_columns(
-            # if species is null and ge_fixed does not end in "_X", add "_X"
-            pl.when(
-                (pl.col("species").is_null()) & (~pl.col("genus").str.contains(r"_X+$"))
-            )
-            .then(pl.col("genus") + "_X")
-            .otherwise(pl.col("species"))
-            .alias("species")
-        )
-        .with_columns(
-            # if species is null and ge_fixed ends in "_X", add "X"
-            pl.when(
-                (pl.col("species").is_null()) & (pl.col("genus").str.contains(r"_X+$"))
-            )
-            .then(pl.col("genus") + "X")
-            .otherwise(pl.col("species"))
-            .alias("species")
-        )
-    ).sink_csv(args.outfile, separator="\t")
+            elif rank == "phylum":
+                tsv = tsv.with_columns(
+                    pl.when(pl.col(rank).is_null())
+                    .then(pl.col("kingdom") + "_X")
+                    .otherwise(pl.col(rank))
+                    .alias(rank)
+                )
+            else:
+                parent = ranks[ranks.index(rank) - 1]
+                # if rank is class, order, family, genus or species
+                # and parent rank does not end in "_X", set to parent + "_X"
+                # otherwise set to parent + "X"
+                tsv = tsv.with_columns(
+                    pl.when(
+                        (pl.col(rank).is_null())
+                        & (~pl.col(parent).str.contains(r"_X+$"))
+                    )
+                    .then(pl.col(parent) + "_X")
+                    .otherwise(pl.col(rank))
+                    .alias(rank)
+                )
+                tsv = tsv.with_columns(
+                    pl.when(
+                        (pl.col(rank).is_null())
+                        & (pl.col(parent).str.contains(r"_X+$"))
+                    )
+                    .then(pl.col(parent) + "X")
+                    .otherwise(pl.col(rank))
+                    .alias(rank)
+                )
+    tsv.sink_csv(args.outfile, separator="\t")

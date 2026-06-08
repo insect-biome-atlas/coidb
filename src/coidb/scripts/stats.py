@@ -4,7 +4,7 @@ import polars as pl
 from tqdm import tqdm
 import gzip as gz
 from argparse import ArgumentParser
-import sys
+import os
 
 
 def count_bin_clusters(f):
@@ -60,13 +60,28 @@ def count_bin_clusters(f):
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument("--tsv", type=str, help="COIDB info TSV file")
-    parser.add_argument("--fasta", type=str, help="COIDB clustered fasta.gz file")
-    parser.add_argument("--consensus", type=str, help="Consensus taxonomy TSV file")
+    parser.add_argument(
+        "--fasta", required=True, type=str, help="COIDB clustered fasta.gz file"
+    )
+    parser.add_argument(
+        "--consensus", required=True, type=str, help="Consensus taxonomy TSV file"
+    )
+    parser.add_argument(
+        "--general_stats_out",
+        required=True,
+        type=str,
+        help="Output file for general stats",
+    )
+    parser.add_argument(
+        "--taxa_stats_out",
+        required=True,
+        type=str,
+        help="Counts of bins and sequences in kingdoms/phyla",
+    )
     args = parser.parse_args()
-    tsv = args.tsv
     fasta = args.fasta
     consensus = args.consensus
+    cons_type = os.path.splitext(os.path.basename(consensus))[0].replace(".tsv", "")
     (
         seqids,
         bins_df,
@@ -74,102 +89,151 @@ def main():
         median_clusters_per_bins,
         max_clusters_per_bins,
     ) = count_bin_clusters(fasta)
-    consensus_df = pl.scan_csv(consensus, separator="\t")
-    with gz.open(tsv, "rt") as fhin:
-        seqs = -1
-        for line in tqdm(fhin, desc=f"Reading {tsv}", unit=" lines"):
-            seqs += 1
-    total_seqs = seqs
-    total_bins = (
-        bins_df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
-        .select(pl.len())
-        .collect()
-        .item()
+    consensus_joined_df = pl.scan_csv(consensus, separator="\t").join(
+        bins_df, on="bin_uri"
     )
-    seqs_per_kingdom = (
-        consensus_df.join(bins_df, on="bin_uri")
-        .group_by("kingdom")
-        .agg(pl.sum("n"))
-        .rename({"n": "n_seqs"})
-        .sort("n_seqs", descending=True)
-        .collect()
-    )
-    bins_per_kingdom = (
-        consensus_df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
-        .group_by("kingdom")
-        .len()
-        .sort("len", descending=True)
-        .rename({"len": "n_bins"})
-        .collect()
-    )
-    bins_per_phyla = (
-        consensus_df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
-        .group_by("phylum")
-        .len()
-        .sort("len", descending=True)
-        .rename({"len": "n_bins"})
-        .collect()
-    )
-    sys.stdout.write(f"Total records: {total_seqs}\n")
-    sys.stdout.write(f"Total number of BINs: {total_bins}\n")
-    sys.stdout.write(f"Total sequences (clustered): {len(seqids)}\n")
-    sys.stdout.write(f"Clustered sequences per BIN:\n")
-    sys.stdout.write(f"    mean: {round(mean_clusters_per_bins)}\n")
-    sys.stdout.write(f"    median: {round(median_clusters_per_bins)}\n")
-    sys.stdout.write(f"    max: {max_clusters_per_bins}\n")
-    sys.stdout.write("Total sequences (clustered) per kingdom:\n")
-    seqs_per_kingdom.write_csv(sys.stdout, separator="\t")
-    sys.stdout.write("\n")
-    sys.stdout.write("Total BINs per kingdom:\n")
-    bins_per_kingdom.write_csv(sys.stdout, separator="\t")
-    sys.stdout.write("\n")
-    sys.stdout.write("Total BINs per phylum:\n")
-    bins_per_phyla.write_csv(sys.stdout, separator="\t")
-    sys.stdout.write("\n")
-    total_species = consensus_df.select("species").unique().collect().height
-    total_bin_species = (
-        consensus_df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
-        .select("species")
-        .unique()
+    # calculate stats on sequences per bin
+    bold_bin_df = consensus_joined_df.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
+    mean_seqs_per_bin = bold_bin_df.select("n").mean().collect().item(0, 0)
+    median_seqs_per_bin = bold_bin_df.select("n").median().collect().item(0, 0)
+    min_seqs_per_bin = bold_bin_df.select("n").min().collect().item(0, 0)
+    max_seqs_per_bin = bold_bin_df.select("n").max().collect().item(0, 0)
+    # calculate total sequences
+    total_seqs = consensus_joined_df.select("n").sum().collect().item(0, 0)
+    # calculate total bins
+    total_bins = bold_bin_df.collect().height
+    # calculate total non-BOLD-bins
+    total_nonbins = (
+        consensus_joined_df.filter(~pl.col("bin_uri").str.starts_with("BOLD:"))
         .collect()
         .height
     )
-    ambig_species = consensus_df.filter(
+    seqs_per_kingdom = (
+        consensus_joined_df.group_by("kingdom")
+        .agg(pl.sum("n"))
+        .rename({"n": "n_seqs"})
+        .collect()
+        .sort("kingdom")
+    )
+    bins_per_kingdom = (
+        bold_bin_df.group_by("kingdom")
+        .len()
+        .rename({"len": "n_bins"})
+        .sort("kingdom")
+        .collect()
+    )
+    seqs_per_phylum = (
+        consensus_joined_df.group_by("phylum")
+        .agg(pl.sum("n"))
+        .rename({"n": "n_seqs"})
+        .collect()
+        .sort("phylum")
+    )
+    bins_per_phyla = (
+        bold_bin_df.group_by("phylum")
+        .len()
+        .rename({"len": "n_bins"})
+        .collect()
+        .sort("phylum")
+    )
+    # calculate total unique species
+    total_species = consensus_joined_df.select("species").unique().collect().height
+    # calculate total unique species assigned to BOLD BINs
+    total_bin_species = bold_bin_df.select("species").unique().collect().height
+    total_nonbin_species = bold_bin_df.select("species").unique().collect().height
+    # filter to ambiguous species
+    ambig_species = consensus_joined_df.filter(
         (pl.col("species").str.contains(r"_X+$"))
         & (~pl.col("species").str.starts_with("unresolved"))
     )
+    # calculate sequences in ambiguous species
+    ambig_species_seqs = ambig_species.select("n").sum().collect().item(0, 0)
+    # filter to ambiguous species assigned to BOLD BINs
     ambig_bin_species = ambig_species.filter(pl.col("bin_uri").str.starts_with("BOLD:"))
-    unresolved_species = consensus_df.filter(
+    # calculate sequences in ambiguous species assigned to BOLD BINs
+    ambig_bin_species_seqs = ambig_bin_species.select("n").sum().collect().item(0, 0)
+    # filter to unresolved species
+    unresolved_species = consensus_joined_df.filter(
         (pl.col("species").str.starts_with("unresolved"))
         & (~pl.col("species").str.contains(r"_X+$"))
     )
+    # calculate sequences in unresolved species
+    unresolved_species_seqs = unresolved_species.select("n").sum().collect().item(0, 0)
+    # filter to unresolved species assigned to BOLD BINs
     unresolved_bin_species = unresolved_species.filter(
         pl.col("bin_uri").str.starts_with("BOLD:")
     )
-    unresolved_ambig_species = consensus_df.filter(
+    # calculate sequences in unresolved species assigned to BOLD BINs
+    unresolved_bin_species_seqs = (
+        unresolved_bin_species.select("n").sum().collect().item(0, 0)
+    )
+    unresolved_ambig_species = consensus_joined_df.filter(
         (pl.col("species").str.starts_with("unresolved"))
         & (pl.col("species").str.contains(r"_X+$"))
+    )
+    unresolved_ambig_species_seqs = (
+        unresolved_ambig_species.select("n").sum().collect().item(0, 0)
     )
     unresolved_ambig_bin_species = unresolved_ambig_species.filter(
         pl.col("bin_uri").str.starts_with("BOLD:")
     )
-    sys.stdout.write(f"Total species: {total_species}\n")
-    sys.stdout.write(f"Total BIN species: {total_bin_species}\n")
-    sys.stdout.write(
-        f"Ambiguous species: {ambig_species.select("species").unique().collect().height}\n"
+    unresolved_ambig_bin_species_seqs = (
+        unresolved_ambig_bin_species.select("n").sum().collect().item(0, 0)
     )
-    sys.stdout.write(
-        f"Ambiguous BIN species: {ambig_bin_species.select("species").unique().collect().height}\n"
+    general_stats = pl.DataFrame(
+        data={
+            "type": [cons_type],
+            "total_seqs": [total_seqs],
+            "total_bins": [total_bins],
+            "mean_seqs_per_bin": [mean_seqs_per_bin],
+            "median_seqs_per_bin": [median_seqs_per_bin],
+            "min_seqs_per_bin": [min_seqs_per_bin],
+            "max_seqs_per_bin": [max_seqs_per_bin],
+            "total_non-bins": [total_nonbins],
+            "total_species": [total_species],
+            "total_bin_species": [total_bin_species],
+            "total_nonbin_species": [total_nonbin_species],
+            "ambiguous_species": [
+                ambig_species.select("species").unique().collect().height
+            ],
+            "seqs_in_ambiguous_species": [ambig_species_seqs],
+            "ambiguous_bin_species": [
+                ambig_bin_species.select("species").unique().collect().height
+            ],
+            "seqs_in_ambiguous_bin_species": [ambig_bin_species_seqs],
+            "unresolved_species": [
+                unresolved_species.select("species").unique().collect().height
+            ],
+            "seqs_in_unresolved_species": [unresolved_species_seqs],
+            "unresolved_bin_species": [
+                unresolved_bin_species.select("species").unique().collect().height
+            ],
+            "seqs_in_unresolved_bin_species": [unresolved_bin_species_seqs],
+            "unresolved_ambiguous_species": [
+                unresolved_ambig_species.select("species").unique().collect().height
+            ],
+            "seqs_in_unresolved_ambiguous_species": [unresolved_ambig_species_seqs],
+            "unresolved_ambiguous_bin_species": [
+                unresolved_ambig_bin_species.select("species").unique().collect().height
+            ],
+            "seqs_in_unresolved_ambiguous_bin_species": [
+                unresolved_ambig_bin_species_seqs
+            ],
+        }
     )
-    sys.stdout.write(
-        f"Unresolved species: {unresolved_species.select("species").unique().collect().height}\n"
+    phylum_counts = (
+        bins_per_phyla.join(seqs_per_phylum, on="phylum", how="full", coalesce=True)
+        .with_columns(rank=pl.lit("phylum"))
+        .fill_null(0)
+        .rename({"phylum": "taxa"})
     )
-    sys.stdout.write(
-        f"Unresolved BIN species: {unresolved_bin_species.select("species").unique().collect().height}\n"
+    kingdom_counts = (
+        bins_per_kingdom.join(seqs_per_kingdom, on="kingdom", how="full", coalesce=True)
+        .with_columns(rank=pl.lit("kingdom"))
+        .fill_null(0)
+        .rename({"kingdom": "taxa"})
     )
-    sys.stdout.write(
-        f"Unresolved and ambiguous species: {unresolved_ambig_species.select("species").unique().collect().height}\n"
+    pl.concat([kingdom_counts, phylum_counts]).write_csv(
+        args.taxa_stats_out, separator="\t"
     )
-    sys.stdout.write(
-        f"Unresolved and ambiguous BIN species: {unresolved_ambig_bin_species.select("species").unique().collect().height}\n"
-    )
+    general_stats.write_csv(args.general_stats_out, separator="\t")

@@ -5,7 +5,7 @@ readme = "README.md"
 license = "MIT"
 keywords = []
 authors = [{ name = "John Sundh", email = "john.sundh@scilifelab.se" }]
-version = "0.6.0"
+version = "0.7.0"
 
 [project.scripts]
 coidb = "coidb.cli:coidb"
@@ -13,6 +13,7 @@ filter-records = "coidb.scripts.filter:main"
 fill-missing = "coidb.scripts.fill_missing:main"
 coidb-format = "coidb.scripts.format:main"
 consensus-taxonomy = "coidb.scripts.consensus_taxonomy:main"
+consolidate-names = "coidb.scripts.consolidate_names:main"
 parse-backbone = "coidb.scripts.parse_backbone:main"
 match-names = "coidb.scripts.match_names:main"
 bold2fasta = "coidb.scripts.bold2fasta:main"
@@ -33,7 +34,7 @@ requires = ["hatchling"]
 channels = ["https://prefix.dev/pixi-build-backends", "https://prefix.dev/conda-forge", "bioconda"]
 platforms = ["linux-64", "osx-arm64", "osx-64"]
 preview = ["pixi-build"]
-version = "0.6.0"
+version = "0.7.0"
 
 [dependency-groups]
 test = ["pytest"]
@@ -57,14 +58,15 @@ default = {features = [], solve-group = "default"}
 test = {features = ["test"], solve-group = "default"}
 
 [tool.pixi.tasks]
-env = { cmd = "pixi install --locked -e default"}
-build = { cmd = "pixi build --locked --path pyproject.toml", depends-on = ["env"]}
-install = { cmd = "pixi inject -p $CONDA_PREFIX --package coidb-*.conda", depends-on = ["build"]}
+env = { cmd = "pixi reinstall --locked -e default"}
+build = { cmd = "pixi publish --target-dir .pixi/publish --force --clean --path pyproject.toml", depends-on = ["env"]}
+install = { cmd = "pixi inject -p $CONDA_PREFIX --package .pixi/publish/coidb-*.conda", depends-on = ["build"]}
 
 
 [tool.pixi.feature.test.tasks]
-build_test = { cmd = "pixi build --locked --path pyproject.toml"}
-inject = { cmd = "pixi inject -p $CONDA_PREFIX --package coidb-*.conda", depends-on = ["build_test"]}
+env_test = { cmd = "pixi reinstall --locked -e test"}
+build_test = { cmd = "pixi publish --target-dir .pixi/publish --force --clean --path pyproject.toml", depends-on = ["env_test"]}
+inject = { cmd = "pixi inject -p $CONDA_PREFIX --package .pixi/publish/coidb-*.conda", depends-on = ["build_test"]}
 test = { cmd = "pytest tests/test.py", depends-on=["inject"]}
 
 [tool.pixi.package]

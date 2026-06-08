@@ -1,6 +1,19 @@
-input_file: "tests/info.tsv"
-output_dir: "tests/test2"
-temp_dir: "tests/test2/tmp"
-min_len: 100
+account: null
+batch_size: 50000
+consensus_method: rank
 consensus_threshold: 80
+gbif_backbone: false
+gbif_checklistkey: null
+input_file: "tests/info.tsv"
+min_len: 100
+output_dir: "tests/test2"
+ranks:
+- kingdom
+- phylum
+- class
+- order
+- family
+- genus
+- species
+temp_dir: "tests/test2/tmp"
 vsearch_identity: 0.99
