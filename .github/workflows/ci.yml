@@ -21,6 +21,6 @@ jobs:
     - name: Set up pixi
       uses: prefix-dev/setup-pixi@v0.9.6
       with:
-        pixi-version: v0.66.0
+        pixi-version: v0.68.1
     - name: Test ${{ matrix.os }}
       run: pixi run test
