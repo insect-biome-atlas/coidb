@@ -8,10 +8,11 @@ import sys
 
 def read_records(f):
     """
-    Read records from fasta file
+    Read records from fasta file and return LazyFrame with format
+    processid     bin_uri
+    NOCLP3607-22  BOLD:AHL6815
     """
-    records = []
-    bin_uris = []
+    d = {"processid": [], "bin_uri": []}
     if f.endswith(".gz"):
         open_fn = gz.open
         mode = "rt"
@@ -23,12 +24,40 @@ def read_records(f):
             line = line.rstrip()
             if line.startswith(">"):
                 record, bin_uri = line.lstrip(">").split(" ")
-                records.append(record)
-                bin_uris.append(bin_uri.lstrip("bin_uri:"))
-    return records, bin_uris
+                bin_uri = bin_uri.lstrip("bin_uri:")
+                d["processid"].append(record)
+                d["bin_uri"].append(bin_uri)
+    return pl.DataFrame(d).lazy()
+
+
+def generate_id_file(ids, outfile):
+    """
+    Write ids to a file
+    """
+    with open(outfile, "w") as fhout:
+        for i in ids:
+            fhout.write(f"{i}\n")
 
 
 def generate_kv_file(df, outfile, format="sintax"):
+    """
+    Generate a key-value file for the given dataframe
+
+    Depending on the format, the key-value file will be generated differently.
+
+    For sintax, the key-value file will have the output format:
+    bin_uri:BOLD:AHL6815    ;tax=k:Animalia,p:Arthropoda,c:Insecta,o:Hymenoptera,f:Pemphredonidae,g:Spilomena,s:Spilomena sp. FOD2,t:BOLD:AHL6815
+
+    For dada2.toGenus, the key-value file will have the output format:
+    bin_uri:BOLD:AHL6815    Animalia;Arthropoda;Insecta;Hymenoptera;Pemphredonidae;Spilomena;
+
+    For dada2.addSpecies, the key-value file will have the output format:
+    bin_uri:BOLD:AHL6815    Spilomena sp. FOD2
+
+    The file is then used with seqkit in the coidb workflow to generate a tool-compatible fasta
+    file by first running 'seqkit grep' with the ids stored with the generate_id_file function,
+    followed by 'seqkit replace' using the key-value file produced by this function.
+    """
     if format == "sintax":
         df = df.with_columns(
             value=";tax=k:"
@@ -133,7 +162,7 @@ def main():
     parser.add_argument(
         "--fasta",
         type=str,
-        required=False,
+        required=True,
         help="Fasta file of sequences. Required when --format=qiime2",
     )
     parser.add_argument(
@@ -156,20 +185,35 @@ def main():
         ],
     )
     parser.add_argument("-o", "--outfile", type=str, required=True, help="Output file")
+    parser.add_argument("--idfile", type=str, help="Fasta identifiers output file")
     args = parser.parse_args()
-    # Read consensus taxonomy for BOLD BINs
+    # Ensure idfile argument passed if format != qiime2
+    if args.format != "qiime2" and args.idfile is None:
+        sys.exit("Argument --idfile required when format!=qiime2\n")
+    # Generate LazyFrame for consensus taxonomy with format
+    # bin_uri       kingdom...species
+    # BOLD:AHL6815  Animalia...Spilomena sp. FOD2
     consensus = pl.scan_csv(args.consensus, separator="\t")
+    sys.stderr.write(f"Reading fasta headers from {args.fasta}\n")
+    # read all records and store as LazyFrame with format
+    # processid     bin_uri
+    # NOCLP3607-22  BOLD:AHL6815
+    records = read_records(args.fasta)
+    # join consensus taxonomy with records on bin_uri to generate LazyFrame with format
+    # bin_uri       kingdom...species               processid
+    # BOLD:AHL6815  Animalia...Spilomena sp. FOD2   NOCLP3607-22
+    df = consensus.join(records, on="bin_uri")
+    sys.stderr.write(
+        f"{df.collect().height}/{records.collect().height} records found in consensus\n"
+    )
     if args.format == "qiime2":
         sys.stderr.write("Generating QIIME2 format file\n")
-        if not args.fasta:
-            sys.exit("Fasta file required when format=qiime2")
-        sys.stderr.write(f"Reading fasta headers from {args.fasta}\n")
-        records, bin_uris = read_records(args.fasta)
-        sys.stderr.write(f"{len(records)} headers stored\n")
-        df = pl.LazyFrame(data={"processid": records, "bin_uri": bin_uris})
-        df = df.join(consensus, on="bin_uri")
         sys.stderr.write(f"Writing QIIME2 format file to {args.outfile}\n")
         format_qiime2(df, args.outfile)
     else:
         sys.stderr.write(f"Writing {args.format} key-value file to {args.outfile}\n")
         generate_kv_file(df=consensus, outfile=args.outfile, format=args.format)
+        generate_id_file(
+            ids=df.select("processid").unique().collect().to_series().to_list(),
+            outfile=args.idfile,
+        )
