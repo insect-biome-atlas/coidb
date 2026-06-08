@@ -7,7 +7,7 @@ WORKDIR /app
 
 ENV PATH=$PATH:/opt/conda/bin:/opt/conda/condabin
 
-RUN pixi global install pixi-install-to-prefix pixi-inject
+RUN pixi global install pixi-install-to-prefix
 
 COPY src /app
 COPY pixi.lock pyproject.toml README.md /app/
