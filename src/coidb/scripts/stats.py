@@ -140,7 +140,13 @@ def main():
     total_species = consensus_joined_df.select("species").unique().collect().height
     # calculate total unique species assigned to BOLD BINs
     total_bin_species = bold_bin_df.select("species").unique().collect().height
-    total_nonbin_species = bold_bin_df.select("species").unique().collect().height
+    total_nonbin_species = (
+        consensus_joined_df.filter(~pl.col("bin_uri").str.starts_with("BOLD:"))
+        .select("species")
+        .unique()
+        .collect()
+        .height
+    )
     # filter to ambiguous species
     ambig_species = consensus_joined_df.filter(
         (pl.col("species").str.contains(r"_X+$"))
