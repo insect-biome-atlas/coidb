@@ -8,7 +8,9 @@ import sys
 
 def read_records(f):
     """
-    Read records from fasta file
+    Read records from fasta file and return LazyFrame with format
+    processid     bin_uri
+    NOCLP3607-22  BOLD:AHL6815
     """
     d = {"processid": [], "bin_uri": []}
     if f.endswith(".gz"):
@@ -29,12 +31,33 @@ def read_records(f):
 
 
 def generate_id_file(ids, outfile):
+    """
+    Write ids to a file
+    """
     with open(outfile, "w") as fhout:
         for i in ids:
             fhout.write(f"{i}\n")
 
 
 def generate_kv_file(df, outfile, format="sintax"):
+    """
+    Generate a key-value file for the given dataframe
+
+    Depending on the format, the key-value file will be generated differently.
+
+    For sintax, the key-value file will have the output format:
+    bin_uri:BOLD:AHL6815    ;tax=k:Animalia,p:Arthropoda,c:Insecta,o:Hymenoptera,f:Pemphredonidae,g:Spilomena,s:Spilomena sp. FOD2,t:BOLD:AHL6815
+
+    For dada2.toGenus, the key-value file will have the output format:
+    bin_uri:BOLD:AHL6815    Animalia;Arthropoda;Insecta;Hymenoptera;Pemphredonidae;Spilomena;
+
+    For dada2.addSpecies, the key-value file will have the output format:
+    bin_uri:BOLD:AHL6815    Spilomena sp. FOD2
+
+    The file is then used with seqkit in the coidb workflow to generate a tool-compatible fasta
+    file by first running 'seqkit grep' with the ids stored with the generate_id_file function,
+    followed by 'seqkit replace' using the key-value file produced by this function.
+    """
     if format == "sintax":
         df = df.with_columns(
             value=";tax=k:"
@@ -167,10 +190,18 @@ def main():
     # Ensure idfile argument passed if format != qiime2
     if args.format != "qiime2" and args.idfile is None:
         sys.exit("Argument --idfile required when format!=qiime2\n")
-    # Read consensus taxonomy for BOLD BINs
+    # Generate LazyFrame for consensus taxonomy with format
+    # bin_uri       kingdom...species
+    # BOLD:AHL6815  Animalia...Spilomena sp. FOD2
     consensus = pl.scan_csv(args.consensus, separator="\t")
     sys.stderr.write(f"Reading fasta headers from {args.fasta}\n")
+    # read all records and store as LazyFrame with format
+    # processid     bin_uri
+    # NOCLP3607-22  BOLD:AHL6815
     records = read_records(args.fasta)
+    # join consensus taxonomy with records on bin_uri to generate LazyFrame with format
+    # bin_uri       kingdom...species               processid
+    # BOLD:AHL6815  Animalia...Spilomena sp. FOD2   NOCLP3607-22
     df = consensus.join(records, on="bin_uri")
     sys.stderr.write(
         f"{df.collect().height}/{records.collect().height} records found in consensus\n"
